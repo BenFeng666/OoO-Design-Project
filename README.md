@@ -1,1 +1,50 @@
-# OoO-Design-Project
+
+# Out of Order (OoO) Processor 🚀
+
+A high-performance execution engine simulation. This project explores the transition from a traditional synchronous pipeline to a dynamic, out-of-order execution model.
+
+
+
+---
+
+## 📊 Current Status: Phase 1 (In-Order)
+We are currently establishing the **In-Order Baseline**. This ensures that the fundamental architectural states—Fetch, Decode, Execute, Memory, and Writeback—are functioning correctly before we introduce the complexity of dynamic scheduling.
+
+### Project Roadmap
+- [x] **Phase 0:** Architecture Design & ISA Definition
+- [> ] **Phase 1:** In-Order Pipeline (Current)
+- [ ] **Phase 2:** Scoreboarding / Tomasulo’s Algorithm
+- [ ] **Phase 3:** Register Renaming (RAT/FL)
+- [ ] **Phase 4:** Speculative Execution & Reorder Buffer (ROB)
+
+---
+
+## 🛠 Progress Tracker
+
+| Component | Status | Description |
+| :--- | :--- | :--- |
+| **Instruction Fetch** | ✅ Complete | Basic PC increment and memory interfacing. |
+| **Decode Logic** | 🏗️ In Progress | Mapping opcodes to functional units. |
+| **ALU / Execute** | ✅ Complete | Support for basic Integer Arithmetic. |
+| **Hazard Unit** | 🏗️ In Progress | Implementing stalls for RAW dependencies. |
+| **Memory/WB** | 📅 Planned | Interfacing with Data Cache. |
+
+---
+
+## 🧩 Planned Features (Out-of-Order Phase)
+Once the In-Order foundation is stable, the following OoO features will be implemented to increase **Instructions Per Cycle (IPC)**:
+
+* **Reservation Stations:** To hold instructions waiting for operands.
+* **Register Renaming:** To eliminate False Dependencies (WAR/WAW).
+* **Common Data Bus (CDB):** To broadcast results to waiting stations.
+* **Reorder Buffer (ROB):** To ensure "In-Order Retirement" despite "Out-of-Order Execution."
+
+
+
+---
+
+## 🚀 Getting Started
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/your-username/out-of-order.git](https://github.com/your-username/out-of-order.git)
