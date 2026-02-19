@@ -23,21 +23,16 @@ We are currently establishing the **In-Order Baseline**. This ensures that the f
 
 | Component | Status | Description |
 | :--- | :--- | :--- |
-| **Instruction Fetch** | ✅ Complete | Basic PC increment and memory interfacing. |
+| **Instruction Fetch** |🏗️ In Progress| Basic PC increment and memory interfacing. |
 | **Decode Logic** | 🏗️ In Progress | Mapping opcodes to functional units. |
-| **ALU / Execute** | ✅ Complete | Support for basic Integer Arithmetic. |
+| **ALU / Execute** |🏗️ In Progress | Support for basic Integer Arithmetic. |
 | **Hazard Unit** | 🏗️ In Progress | Implementing stalls for RAW dependencies. |
-| **Memory/WB** | 📅 Planned | Interfacing with Data Cache. |
+| **Memory/WB** | 🏗️ In Progress | Interfacing with Data Cache. |
 
 ---
 
 ## 🧩 Planned Features (Out-of-Order Phase)
 Once the In-Order foundation is stable, the following OoO features will be implemented to increase **Instructions Per Cycle (IPC)**:
-
-* **Reservation Stations:** To hold instructions waiting for operands.
-* **Register Renaming:** To eliminate False Dependencies (WAR/WAW).
-* **Common Data Bus (CDB):** To broadcast results to waiting stations.
-* **Reorder Buffer (ROB):** To ensure "In-Order Retirement" despite "Out-of-Order Execution."
 
 
 
