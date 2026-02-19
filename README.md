@@ -13,9 +13,9 @@ We are currently establishing the **In-Order Baseline**. This ensures that the f
 ### Project Roadmap
 - [x] **Phase 0:** Architecture Design & ISA Definition
 - [> ] **Phase 1:** In-Order Pipeline (Current)
-- [ ] **Phase 2:** Scoreboarding / Tomasulo’s Algorithm
-- [ ] **Phase 3:** Register Renaming (RAT/FL)
-- [ ] **Phase 4:** Speculative Execution & Reorder Buffer (ROB)
+- [ ] **Phase 2:** Out of Order Pipeline (Not started)
+- [ ] **Phase 3:** Testing and implementing on FPGA (Not started)
+
 
 ---
 
