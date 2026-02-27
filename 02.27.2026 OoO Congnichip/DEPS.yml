@@ -1,0 +1,45 @@
+# DEPS configuration for Out-of-Order CPU Core simulation
+
+# Testbench target with enhanced verification
+sim_ooo_cpu_enhanced:
+  deps:
+    - alu.sv
+    - instruction_rom.sv
+    - fetch_unit.sv
+    - register_file.sv
+    - reorder_buffer.sv
+    - reservation_station.sv
+    - execution_unit.sv
+    - decode_unit.sv
+    - ooo_cpu_core.sv
+    - tb_ooo_cpu_core_enhanced.sv
+  top: tb_ooo_cpu_core_enhanced
+
+# Testbench target with basic verification (if you have it)
+sim_ooo_cpu_basic:
+  deps:
+    - alu.sv
+    - instruction_rom.sv
+    - fetch_unit.sv
+    - register_file.sv
+    - reorder_buffer.sv
+    - reservation_station.sv
+    - execution_unit.sv
+    - decode_unit.sv
+    - ooo_cpu_core.sv
+    - tb_ooo_cpu_core.sv
+  top: tb_ooo_cpu_core
+
+# Design-only target (no testbench)
+ooo_cpu_design:
+  deps:
+    - alu.sv
+    - instruction_rom.sv
+    - fetch_unit.sv
+    - register_file.sv
+    - reorder_buffer.sv
+    - reservation_station.sv
+    - execution_unit.sv
+    - decode_unit.sv
+    - ooo_cpu_core.sv
+  top: ooo_cpu_core
