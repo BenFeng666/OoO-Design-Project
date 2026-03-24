@@ -1,6 +1,6 @@
 module top module (
-    input clk,
-    input rst
+    input wire clk,
+    input wire rst
 
 );
 
