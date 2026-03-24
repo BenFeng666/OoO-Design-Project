@@ -3,7 +3,10 @@ module top module (
     input wire rst
 
 );
-
+wire [31:0] rs1_data;
+wire [31:0] rs2_data;
+wire [31:0] instruction;
+    
 ALU u_alu (
     .A(rs1_data),
     .B(alu_in2),
