@@ -6,6 +6,29 @@ module top module (
 wire [31:0] rs1_data;
 wire [31:0] rs2_data;
 wire [31:0] instruction;
+wire [3:0] alu_ctrl;
+wire [31:0] alu_result;
+wire zero;
+wire negative;
+wire [31:0] alu_in2;
+wire WE;
+wire ALUSrc;
+wire MemRead;
+wire MemWrite;
+wire MemtoReg;
+wire Branch;
+wire jump;
+wire [31:0] pc;
+wire [31:0] pc4;
+wire [31:0] branch_target;
+wire [31:0] jal_target;
+wire [1:0] pc_sel;
+wire [31:0] next_pc;
+wire [31:0] address;
+wire [31:0] imm;
+wire [31:0] rd_data;
+wire [31:0] mem_data;
+wire [31:0] wb_data;
     
 ALU u_alu (
     .A(rs1_data),
