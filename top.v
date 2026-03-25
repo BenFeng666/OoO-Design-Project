@@ -1,4 +1,4 @@
-module top module (
+module top (
     input wire clk,
     input wire rst
 
@@ -29,7 +29,17 @@ wire [31:0] imm;
 wire [31:0] rd_data;
 wire [31:0] mem_data;
 wire [31:0] wb_data;
-    
+
+assign alu_in2 = (ALUSrc) ? imm : rs2_data; // for ALU 2 select MUX
+
+assign pc4 = pc + 32'd4; // next instruction
+assign branch_target = pc + imm;  // branch target
+assign jal_target = pc + imm; // jump target
+
+assign pc_sel = (jump) ? 2'b11 :
+                (Branch && zero) ? 2'b01 :
+                2'b00;
+
 ALU u_alu (
     .A(rs1_data),
     .B(alu_in2),
@@ -109,5 +119,6 @@ wb_mux u_wb_mux (
     .wb_data(wb_data)
 );
 
-endmodule
 
+
+endmodule
