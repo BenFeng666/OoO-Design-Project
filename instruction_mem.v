@@ -6,6 +6,6 @@ module instruction_mem(
 reg [31:0] inst_mem [256];
 
 always @(*) begin
-    instruction = inst_mem[addr]
+    instruction = inst_mem[addr];
 end
 endmodule
