@@ -10,7 +10,9 @@ module ID_EX (
     input wire MemtoReg,
     input wire Branch,
     input wire jump,
-    input [3:0] ctrl,
+    input wire [3:0] ctrl,
+    input wire [4:0] rg_addr,
+    input wire rg_WE,
     output reg [31:0] ex_rs1,
     output reg [31:0] ex_rs2,
     output reg [31:0] ex_imm,
@@ -20,6 +22,8 @@ module ID_EX (
     output reg ex_MemWrite,
     output reg ex_MemtoReg,
     output reg ex_Branch,
+    output reg [4:0] ex_rg_addr,
+    output reg rg_WE,
     output reg ex_jump
 
 );
@@ -39,6 +43,8 @@ always @(posedge clk or negedge rst) begin
         ex_MemtoReg <=1'b0;
         ex_Branch <=1'b0;
         ex_jump <=1'b0;
+        ex_rg_addr <= 5'b0;
+        ex_rg_WE <= 1'b0;
 
     end
 
@@ -54,6 +60,8 @@ always @(posedge clk or negedge rst) begin
         ex_MemtoReg <= MemtoReg;
         ex_Branch <= Branch;
         ex_jump <= jump;
+        ex_rg_addr <= rg_addr;
+        ex_rg_WE <= rg_WE;
 
     end
 
