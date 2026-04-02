@@ -8,6 +8,7 @@ module ex_mem (
     input wire MemWrite,
     input wire MemtoReg,
     input wire rg_WE,
+    input wire [4:0] rg_addr,
     input wire [31:0] address,
     input wire [31:0] write_data,
     input wire [31:0] rs2,
@@ -19,6 +20,7 @@ module ex_mem (
     output reg mem_MemWrite,
     output reg mem_MemtoReg,
     output reg [31:0] mem_address,
+    output reg [4:0] mem_rg_addr,
     output reg [31:0] mem_write_data
    
  
@@ -38,6 +40,7 @@ always @(posedge clk or negedge rst) begin
         mem_address <= 32'b0;
         mem_write_data <= 32'b0;
         mem_rg_WE <= 1'b0;
+        mem_rg_addr <= 5'b0;
         
 
 
@@ -53,6 +56,7 @@ always @(posedge clk or negedge rst) begin
         mem_address <= address;
         mem_write_data <= write_data; // or maybe writedata depending on the future top layer wiring
         mem_rg_WE <= rg_WE;
+        mem_rg_addr <= rg_addr;
 
         
 
