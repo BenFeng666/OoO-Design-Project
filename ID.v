@@ -13,6 +13,7 @@ module ID_EX (
     input wire [3:0] ctrl,
     input wire [4:0] rg_addr,
     input wire rg_WE,
+    input wire [31:0] pc,
     output reg [31:0] ex_rs1,
     output reg [31:0] ex_rs2,
     output reg [31:0] ex_imm,
@@ -24,6 +25,7 @@ module ID_EX (
     output reg ex_Branch,
     output reg [4:0] ex_rg_addr,
     output reg rg_WE,
+    output reg [31:0] pc,
     output reg ex_jump
 
 );
@@ -45,6 +47,7 @@ always @(posedge clk or negedge rst) begin
         ex_jump <=1'b0;
         ex_rg_addr <= 5'b0;
         ex_rg_WE <= 1'b0;
+        ex_pc <= 32'b0;
 
     end
 
@@ -62,6 +65,7 @@ always @(posedge clk or negedge rst) begin
         ex_jump <= jump;
         ex_rg_addr <= rg_addr;
         ex_rg_WE <= rg_WE;
+        ex_pc <= pc;
 
     end
 
