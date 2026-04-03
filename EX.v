@@ -12,7 +12,7 @@ module ex_mem (
     input wire [31:0] address,
     input wire [31:0] write_data,
     input wire [31:0] rs2,
-    output wire mem_rg_WE,
+    output reg mem_rg_WE,
     output reg mem_zero,
     output reg mem_negative,
     output reg [31:0] mem_alu_result,
