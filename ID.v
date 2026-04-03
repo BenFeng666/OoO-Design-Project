@@ -24,8 +24,8 @@ module ID_EX (
     output reg ex_MemtoReg,
     output reg ex_Branch,
     output reg [4:0] ex_rg_addr,
-    output reg rg_WE,
-    output reg [31:0] pc,
+    output reg ex_rg_WE,
+    output reg [31:0] ex_pc,
     output reg ex_jump
 
 );
