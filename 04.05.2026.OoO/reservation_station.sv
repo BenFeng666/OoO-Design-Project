@@ -69,6 +69,7 @@ module reservation_station
     input  logic              dispatch_uses_rd,
     input  logic              dispatch_is_branch,
     input  logic              dispatch_is_jump,
+    input  logic              dispatch_is_jalr,
 
     // Source 1: either a ready value or a tag to wait on
     input  logic              dispatch_src1_ready,
@@ -101,6 +102,7 @@ module reservation_station
     output logic              issue_uses_rd,
     output logic              issue_is_branch,
     output logic              issue_is_jump,
+    output logic              issue_is_jalr,
     output logic [DATA_W-1:0] issue_src1_value,
     output logic [DATA_W-1:0] issue_src2_value,
     output logic [TAG_W-1:0]  issue_rob_tag,
@@ -126,6 +128,7 @@ module reservation_station
         logic              uses_rd;
         logic              is_branch;
         logic              is_jump;
+        logic              is_jalr;
         // Source 1
         logic              src1_ready;
         logic [DATA_W-1:0] src1_value;
@@ -215,6 +218,7 @@ module reservation_station
             issue_uses_rd    = entries[issue_idx].uses_rd;
             issue_is_branch  = entries[issue_idx].is_branch;
             issue_is_jump    = entries[issue_idx].is_jump;
+            issue_is_jalr    = entries[issue_idx].is_jalr;
             issue_src1_value = entries[issue_idx].src1_value;
             issue_src2_value = entries[issue_idx].src2_value;
             issue_rob_tag    = entries[issue_idx].rob_tag;
@@ -229,6 +233,7 @@ module reservation_station
             issue_uses_rd    = 1'b0;
             issue_is_branch  = 1'b0;
             issue_is_jump    = 1'b0;
+            issue_is_jalr    = 1'b0;
             issue_src1_value = '0;
             issue_src2_value = '0;
             issue_rob_tag    = '0;
@@ -288,6 +293,7 @@ module reservation_station
                 entries[free_idx].uses_rd    <= dispatch_uses_rd;
                 entries[free_idx].is_branch  <= dispatch_is_branch;
                 entries[free_idx].is_jump    <= dispatch_is_jump;
+                entries[free_idx].is_jalr    <= dispatch_is_jalr;
                 entries[free_idx].rob_tag    <= dispatch_rob_tag;
 
                 // Source 1: CDB forwarding at dispatch
