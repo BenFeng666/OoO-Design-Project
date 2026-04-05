@@ -38,7 +38,7 @@ module instruction_rom #(
 
     input  logic [ADDR_W-1:0] addr,             // Byte address (word-aligned PC)
     output logic [DATA_W-1:0] instr,            // Instruction (available 1 cycle after addr/en)
-    output logic              addr_valid         // High when addr is within ROM range
+    output logic              addr_valid        // High when addr is within ROM range
 );
 
     // ----------------------------------------------------------------
@@ -73,11 +73,7 @@ module instruction_rom #(
     wire [IDX_W-1:0] word_idx = addr[IDX_W+1:2];
 
     // ----------------------------------------------------------------
-    // Address validity
-    // ----------------------------------------------------------------
-    // Combinational: high when the byte address is strictly less than
-    // the ROM's byte size.  Registered alongside instr so both outputs
-    // correspond to the same request cycle.
+    // Address validity (combinational, registered alongside instr)
     // ----------------------------------------------------------------
     logic addr_in_range;
     assign addr_in_range = (addr < ROM_BYTE_SIZE[ADDR_W-1:0]);
