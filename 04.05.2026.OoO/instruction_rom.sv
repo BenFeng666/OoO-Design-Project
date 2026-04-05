@@ -17,9 +17,10 @@
 //   Verilog (simulation) and Vivado (BRAM init in synthesis).
 //
 // Out-of-range addresses:
-//   The word index is truncated to IDX_W bits, so large addresses wrap.
-//   An `addr_valid` output is provided so the fetch unit can detect when
-//   the PC has left the valid program region [0, ROM_DEPTH*4).
+//   When the byte address is >= ROM_DEPTH*4, the output is forced to
+//   32'h0000_0000 and addr_valid is set to 0.  There is NO wraparound.
+//   32'h0 is not a valid RV32I instruction, so the decode unit will
+//   flag it as ITYPE_ILLEGAL.
 //
 // Uninitialized / zero words:
 //   The ROM is zero-filled before $readmemh.  32'h0000_0000 is NOT a
@@ -38,7 +39,7 @@ module instruction_rom #(
 
     input  logic [ADDR_W-1:0] addr,             // Byte address (word-aligned PC)
     output logic [DATA_W-1:0] instr,            // Instruction (available 1 cycle after addr/en)
-    output logic              addr_valid        // High when addr is within ROM range
+    output logic              addr_valid        // High when addr was within ROM range
 );
 
     // ----------------------------------------------------------------
@@ -48,9 +49,9 @@ module instruction_rom #(
     localparam int ROM_BYTE_SIZE = ROM_DEPTH * 4;   // Total byte span
 
     // ----------------------------------------------------------------
-    // Storage
+    // Storage — explicit unpacked range for tool compatibility
     // ----------------------------------------------------------------
-    logic [DATA_W-1:0] rom [ROM_DEPTH];
+    logic [DATA_W-1:0] rom [0:ROM_DEPTH-1];
 
     // ----------------------------------------------------------------
     // Initialization
@@ -63,28 +64,38 @@ module instruction_rom #(
     end
 
     // ----------------------------------------------------------------
-    // Word index from byte address
-    // ----------------------------------------------------------------
-    // Drop bits [1:0] (byte offset within word — assumed zero for
-    // word-aligned PCs) and take IDX_W bits for the array index.
-    // If the full address exceeds ROM_DEPTH*4, the index wraps via
-    // truncation.  Use `addr_valid` to detect this case.
-    // ----------------------------------------------------------------
-    wire [IDX_W-1:0] word_idx = addr[IDX_W+1:2];
-
-    // ----------------------------------------------------------------
-    // Address validity (combinational, registered alongside instr)
+    // Address validity (combinational helper)
     // ----------------------------------------------------------------
     logic addr_in_range;
     assign addr_in_range = (addr < ROM_BYTE_SIZE[ADDR_W-1:0]);
 
     // ----------------------------------------------------------------
+    // Word index from byte address
+    // ----------------------------------------------------------------
+    // Drop bits [1:0] (byte offset within word — assumed zero for
+    // word-aligned PCs) and take IDX_W bits for the array index.
+    // This index is only used when addr_in_range is true.
+    // ----------------------------------------------------------------
+    wire [IDX_W-1:0] word_idx = addr[IDX_W+1:2];
+
+    // ----------------------------------------------------------------
     // Synchronous read
+    // ----------------------------------------------------------------
+    // When en is high:
+    //   - In-range address:  instr = ROM contents, addr_valid = 1
+    //   - Out-of-range addr: instr = 32'h0,        addr_valid = 0
+    // When en is low:
+    //   - Both outputs hold their previous values.
     // ----------------------------------------------------------------
     always_ff @(posedge clk) begin
         if (en) begin
-            instr      <= rom[word_idx];
-            addr_valid <= addr_in_range;
+            if (addr_in_range) begin
+                instr      <= rom[word_idx];
+                addr_valid <= 1'b1;
+            end else begin
+                instr      <= {DATA_W{1'b0}};
+                addr_valid <= 1'b0;
+            end
         end
         // When en is low, instr and addr_valid hold their previous values.
     end
