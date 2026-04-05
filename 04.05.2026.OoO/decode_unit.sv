@@ -8,8 +8,15 @@
 // The top-level core coordinates register reads, ROB allocation, and RS
 // issue using the decoded bundle this module produces.
 //
-// Uses alu_pkg (defined in alu.sv) for alu_op_t.  Per project convention,
-// alu_pkg is the single source of truth for ALU operation encoding.
+// Package dependencies:
+//   - alu_pkg   (from alu.sv)     — provides alu_op_t
+//   - decode_pkg (defined below)  — provides instr_type_t
+//
+// Per project convention:
+//   - alu_pkg is the single source of truth for ALU operation encoding.
+//   - decode_pkg is the single source of truth for instruction type encoding.
+//   - Future modules must use `import decode_pkg::*;` to access instr_type_t.
+//   - Neither package will be moved or renamed without explicit notice.
 //
 // Supported RV32I subset:
 //   R-type:  ADD SUB AND OR XOR SLL SRL SRA SLT SLTU
@@ -21,24 +28,40 @@
 //
 // NOT supported yet: LOAD, STORE, FENCE, EBREAK.
 // 32'h0 is treated as ILLEGAL (not NOP).
+//
+// BRANCH RESOLUTION RULE (STABLE — do not change without notice):
+//   Branches do NOT use the ALU.  The execution unit resolves all six
+//   branch types using dedicated signed/unsigned comparison logic on
+//   the raw rs1 and rs2 values, guided by funct3.  The decode unit
+//   sets alu_op = ALU_ADD for branches as a don't-care default.
 // ============================================================================
 
-import alu_pkg::*;
+// ============================================================================
+// decode_pkg — Instruction type enumeration
+// ============================================================================
+// Used by: reservation_station, reorder_buffer, execution_unit, ooo_cpu_core
+// ============================================================================
+package decode_pkg;
+
+    typedef enum logic [2:0] {
+        ITYPE_ALU     = 3'd0,    // R-type or I-type ALU operation
+        ITYPE_BRANCH  = 3'd1,    // Conditional branch (BEQ, BNE, ...)
+        ITYPE_JUMP    = 3'd2,    // JAL or JALR
+        ITYPE_LUI     = 3'd3,    // Load upper immediate
+        ITYPE_AUIPC   = 3'd4,    // Add upper immediate to PC
+        ITYPE_HALT    = 3'd5,    // ECALL — program termination
+        ITYPE_ILLEGAL = 3'd6     // Unrecognized or zero instruction
+    } instr_type_t;
+
+endpackage
 
 // ============================================================================
-// Instruction type enum — used by RS, ROB, and execution to decide behavior
+// Decoder module
 // ============================================================================
-typedef enum logic [2:0] {
-    ITYPE_ALU     = 3'd0,    // R-type or I-type ALU operation
-    ITYPE_BRANCH  = 3'd1,    // Conditional branch (BEQ, BNE, ...)
-    ITYPE_JUMP    = 3'd2,    // JAL or JALR
-    ITYPE_LUI     = 3'd3,    // Load upper immediate
-    ITYPE_AUIPC   = 3'd4,    // Add upper immediate to PC
-    ITYPE_HALT    = 3'd5,    // ECALL — program termination
-    ITYPE_ILLEGAL = 3'd6     // Unrecognized or zero instruction
-} instr_type_t;
-
-module decode_unit (
+module decode_unit
+    import alu_pkg::*;
+    import decode_pkg::*;
+(
     // --- Input: fetched instruction ---
     input  logic [31:0]  instr,          // Raw 32-bit instruction word
     input  logic [31:0]  pc,             // PC of this instruction
@@ -141,7 +164,8 @@ module decode_unit (
 
             case (opcode)
                 // ------------------------------------------------
-                // R-type ALU: ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU
+                // R-type ALU: ADD, SUB, AND, OR, XOR, SLL, SRL,
+                //             SRA, SLT, SLTU
                 // ------------------------------------------------
                 OP_ALUR: begin
                     instr_type   = ITYPE_ALU;
@@ -167,7 +191,8 @@ module decode_unit (
                 end
 
                 // ------------------------------------------------
-                // I-type ALU: ADDI, ANDI, ORI, XORI, SLTI, SLTIU, SLLI, SRLI, SRAI
+                // I-type ALU: ADDI, ANDI, ORI, XORI, SLTI, SLTIU,
+                //             SLLI, SRLI, SRAI
                 // ------------------------------------------------
                 OP_ALUI: begin
                     instr_type   = ITYPE_ALU;
@@ -237,7 +262,7 @@ module decode_unit (
                     uses_rd      = 1'b1;
                     uses_imm     = 1'b1;
                     imm          = imm_j;
-                    alu_op       = ALU_ADD;       // Execution computes PC + 4 for link
+                    alu_op       = ALU_ADD;       // Exec computes PC+4 for rd
                     is_jump      = 1'b1;
                     decode_valid = 1'b1;
                 end
@@ -252,13 +277,19 @@ module decode_unit (
                     uses_rd      = 1'b1;
                     uses_imm     = 1'b1;
                     imm          = imm_i;
-                    alu_op       = ALU_ADD;       // Execution computes PC + 4 for link
+                    alu_op       = ALU_ADD;       // Exec computes PC+4 for rd
                     is_jump      = 1'b1;
                     decode_valid = 1'b1;
                 end
 
                 // ------------------------------------------------
                 // Branches: BEQ, BNE, BLT, BGE, BLTU, BGEU
+                //
+                // BRANCH RESOLUTION RULE:
+                //   The ALU is NOT used for branches.  alu_op is set
+                //   to ALU_ADD as a don't-care default.  The execution
+                //   unit resolves branches using dedicated comparison
+                //   logic on raw rs1/rs2 values, guided by funct3.
                 // ------------------------------------------------
                 OP_BRANCH: begin
                     instr_type   = ITYPE_BRANCH;
@@ -267,7 +298,7 @@ module decode_unit (
                     uses_rd      = 1'b0;           // Branches don't write rd
                     uses_imm     = 1'b1;
                     imm          = imm_b;
-                    alu_op       = ALU_SUB;        // Compare rs1 - rs2
+                    alu_op       = ALU_ADD;        // Don't-care (ALU not used)
                     is_branch    = 1'b1;
                     decode_valid = 1'b1;
 
@@ -279,7 +310,7 @@ module decode_unit (
                         3'b101,  // BGE
                         3'b110,  // BLTU
                         3'b111:  // BGEU
-                            ;    // Valid
+                            ;    // Valid — no action needed
                         default: begin
                             decode_valid = 1'b0;
                             instr_type   = ITYPE_ILLEGAL;
@@ -303,7 +334,7 @@ module decode_unit (
                 end
 
                 // ------------------------------------------------
-                // LOAD / STORE — not yet supported, decode as illegal
+                // LOAD / STORE — not yet supported
                 // ------------------------------------------------
                 OP_LOAD, OP_STORE: begin
                     instr_type   = ITYPE_ILLEGAL;
