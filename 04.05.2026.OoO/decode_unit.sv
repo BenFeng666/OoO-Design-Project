@@ -87,6 +87,7 @@ module decode_unit
     output instr_type_t  instr_type,     // Instruction category
     output logic         is_branch,      // Conditional branch
     output logic         is_jump,        // JAL or JALR
+    output logic         is_jalr,        // JALR specifically (for jump target calc)
     output logic [2:0]   funct3_out,     // funct3 passthrough (for branch type)
     output logic [31:0]  pc_out,         // PC passthrough (for AUIPC, JAL, branches)
     output logic         decode_valid    // Instruction successfully decoded
@@ -164,6 +165,7 @@ module decode_unit
         instr_type   = ITYPE_ILLEGAL;
         is_branch    = 1'b0;
         is_jump      = 1'b0;
+        is_jalr      = 1'b0;
         funct3_out   = 3'b0;
         pc_out       = pc;
         decode_valid = 1'b0;
@@ -352,6 +354,7 @@ module decode_unit
                         imm          = imm_i;
                         alu_op       = ALU_ADD;   // Exec computes PC+4 for rd
                         is_jump      = 1'b1;
+                        is_jalr      = 1'b1;
                         decode_valid = 1'b1;
                     end
                     // else: defaults (ILLEGAL) stand
