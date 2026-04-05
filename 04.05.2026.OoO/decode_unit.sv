@@ -29,6 +29,13 @@
 // NOT supported yet: LOAD, STORE, FENCE, EBREAK.
 // 32'h0 is treated as ILLEGAL (not NOP).
 //
+// Legality enforcement:
+//   - R-type instructions require exact funct7 values per the RV32I spec.
+//   - I-type shifts (SLLI, SRLI, SRAI) require exact funct7 values.
+//   - JALR requires funct3 == 3'b000.
+//   - ECALL matches exactly 32'h0000_0073.
+//   Any encoding that does not match these rules is flagged ILLEGAL.
+//
 // BRANCH RESOLUTION RULE (STABLE — do not change without notice):
 //   Branches do NOT use the ALU.  The execution unit resolves all six
 //   branch types using dedicated signed/unsigned comparison logic on
@@ -135,6 +142,12 @@ module decode_unit
     localparam logic [6:0] OP_SYSTEM = 7'b1110011;
 
     // ================================================================
+    // funct7 constants for legality checks
+    // ================================================================
+    localparam logic [6:0] F7_ZERO = 7'b0000000;
+    localparam logic [6:0] F7_SUB  = 7'b0100000;    // SUB, SRA, SRAI
+
+    // ================================================================
     // Main decode logic
     // ================================================================
     always_comb begin
@@ -164,35 +177,80 @@ module decode_unit
 
             case (opcode)
                 // ------------------------------------------------
-                // R-type ALU: ADD, SUB, AND, OR, XOR, SLL, SRL,
-                //             SRA, SLT, SLTU
+                // R-type ALU
+                // Each funct3/funct7 combination is validated exactly
+                // per the RV32I spec.  Any mismatch → ILLEGAL.
                 // ------------------------------------------------
                 OP_ALUR: begin
-                    instr_type   = ITYPE_ALU;
-                    uses_rs1     = 1'b1;
-                    uses_rs2     = 1'b1;
-                    uses_rd      = 1'b1;
-                    uses_imm     = 1'b0;
-                    decode_valid = 1'b1;
+                    uses_rs1 = 1'b1;
+                    uses_rs2 = 1'b1;
+                    uses_rd  = 1'b1;
+                    uses_imm = 1'b0;
                     case (funct3)
-                        3'b000: alu_op = (funct7[5]) ? ALU_SUB : ALU_ADD;
-                        3'b001: alu_op = ALU_SLL;
-                        3'b010: alu_op = ALU_SLT;
-                        3'b011: alu_op = ALU_SLTU;
-                        3'b100: alu_op = ALU_XOR;
-                        3'b101: alu_op = (funct7[5]) ? ALU_SRA : ALU_SRL;
-                        3'b110: alu_op = ALU_OR;
-                        3'b111: alu_op = ALU_AND;
-                        default: begin
-                            decode_valid = 1'b0;
-                            instr_type   = ITYPE_ILLEGAL;
+                        3'b000: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_ADD;       // ADD
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end else if (funct7 == F7_SUB) begin
+                                alu_op = ALU_SUB;       // SUB
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                            // else: defaults (ILLEGAL) stand
                         end
+                        3'b001: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SLL;       // SLL
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b010: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SLT;       // SLT
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b011: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SLTU;      // SLTU
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b100: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_XOR;       // XOR
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b101: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SRL;       // SRL
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end else if (funct7 == F7_SUB) begin
+                                alu_op = ALU_SRA;       // SRA
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b110: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_OR;        // OR
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        3'b111: begin
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_AND;       // AND
+                                instr_type = ITYPE_ALU; decode_valid = 1'b1;
+                            end
+                        end
+                        default: ;  // ILLEGAL defaults stand
                     endcase
                 end
 
                 // ------------------------------------------------
                 // I-type ALU: ADDI, ANDI, ORI, XORI, SLTI, SLTIU,
                 //             SLLI, SRLI, SRAI
+                // Shift instructions require exact funct7 values.
+                // Non-shift instructions ignore funct7.
                 // ------------------------------------------------
                 OP_ALUI: begin
                     instr_type   = ITYPE_ALU;
@@ -210,12 +268,25 @@ module decode_unit
                         3'b110: alu_op = ALU_OR;    // ORI
                         3'b111: alu_op = ALU_AND;   // ANDI
                         3'b001: begin               // SLLI
-                            alu_op = ALU_SLL;
-                            imm    = {27'b0, instr[24:20]};  // shamt
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SLL;
+                                imm    = {27'b0, instr[24:20]};  // shamt
+                            end else begin
+                                decode_valid = 1'b0;
+                                instr_type   = ITYPE_ILLEGAL;
+                            end
                         end
                         3'b101: begin               // SRLI / SRAI
-                            alu_op = (funct7[5]) ? ALU_SRA : ALU_SRL;
-                            imm    = {27'b0, instr[24:20]};  // shamt
+                            if (funct7 == F7_ZERO) begin
+                                alu_op = ALU_SRL;               // SRLI
+                                imm    = {27'b0, instr[24:20]};
+                            end else if (funct7 == F7_SUB) begin
+                                alu_op = ALU_SRA;               // SRAI
+                                imm    = {27'b0, instr[24:20]};
+                            end else begin
+                                decode_valid = 1'b0;
+                                instr_type   = ITYPE_ILLEGAL;
+                            end
                         end
                         default: begin
                             decode_valid = 1'b0;
@@ -269,17 +340,21 @@ module decode_unit
 
                 // ------------------------------------------------
                 // JALR: rd = PC+4, jump to (rs1 + imm_i) & ~1
+                // Requires funct3 == 3'b000 per RV32I spec.
                 // ------------------------------------------------
                 OP_JALR: begin
-                    instr_type   = ITYPE_JUMP;
-                    uses_rs1     = 1'b1;
-                    uses_rs2     = 1'b0;
-                    uses_rd      = 1'b1;
-                    uses_imm     = 1'b1;
-                    imm          = imm_i;
-                    alu_op       = ALU_ADD;       // Exec computes PC+4 for rd
-                    is_jump      = 1'b1;
-                    decode_valid = 1'b1;
+                    if (funct3 == 3'b000) begin
+                        instr_type   = ITYPE_JUMP;
+                        uses_rs1     = 1'b1;
+                        uses_rs2     = 1'b0;
+                        uses_rd      = 1'b1;
+                        uses_imm     = 1'b1;
+                        imm          = imm_i;
+                        alu_op       = ALU_ADD;   // Exec computes PC+4 for rd
+                        is_jump      = 1'b1;
+                        decode_valid = 1'b1;
+                    end
+                    // else: defaults (ILLEGAL) stand
                 end
 
                 // ------------------------------------------------
@@ -292,62 +367,50 @@ module decode_unit
                 //   logic on raw rs1/rs2 values, guided by funct3.
                 // ------------------------------------------------
                 OP_BRANCH: begin
-                    instr_type   = ITYPE_BRANCH;
-                    uses_rs1     = 1'b1;
-                    uses_rs2     = 1'b1;
-                    uses_rd      = 1'b0;           // Branches don't write rd
-                    uses_imm     = 1'b1;
-                    imm          = imm_b;
-                    alu_op       = ALU_ADD;        // Don't-care (ALU not used)
-                    is_branch    = 1'b1;
-                    decode_valid = 1'b1;
-
-                    // Validate funct3 for known branch types
+                    // Validate funct3 first
                     case (funct3)
                         3'b000,  // BEQ
                         3'b001,  // BNE
                         3'b100,  // BLT
                         3'b101,  // BGE
                         3'b110,  // BLTU
-                        3'b111:  // BGEU
-                            ;    // Valid — no action needed
-                        default: begin
-                            decode_valid = 1'b0;
-                            instr_type   = ITYPE_ILLEGAL;
+                        3'b111: begin // BGEU
+                            instr_type   = ITYPE_BRANCH;
+                            uses_rs1     = 1'b1;
+                            uses_rs2     = 1'b1;
+                            uses_rd      = 1'b0;
+                            uses_imm     = 1'b1;
+                            imm          = imm_b;
+                            alu_op       = ALU_ADD;    // Don't-care
+                            is_branch    = 1'b1;
+                            decode_valid = 1'b1;
                         end
+                        default: ;  // ILLEGAL defaults stand
                     endcase
                 end
 
                 // ------------------------------------------------
                 // ECALL — treated as HALT
+                // Exact match: 32'h0000_0073
                 // ------------------------------------------------
                 OP_SYSTEM: begin
-                    if (instr[31:7] == 25'b0) begin
-                        // ECALL encoding: all upper bits zero
+                    if (instr == 32'h0000_0073) begin
                         instr_type   = ITYPE_HALT;
                         uses_rd      = 1'b0;
                         decode_valid = 1'b1;
-                    end else begin
-                        instr_type   = ITYPE_ILLEGAL;
-                        decode_valid = 1'b0;
                     end
+                    // else: defaults (ILLEGAL) stand
                 end
 
                 // ------------------------------------------------
                 // LOAD / STORE — not yet supported
                 // ------------------------------------------------
-                OP_LOAD, OP_STORE: begin
-                    instr_type   = ITYPE_ILLEGAL;
-                    decode_valid = 1'b0;
-                end
+                OP_LOAD, OP_STORE: ;  // ILLEGAL defaults stand
 
                 // ------------------------------------------------
                 // Everything else: illegal
                 // ------------------------------------------------
-                default: begin
-                    instr_type   = ITYPE_ILLEGAL;
-                    decode_valid = 1'b0;
-                end
+                default: ;  // ILLEGAL defaults stand
             endcase
         end
     end
