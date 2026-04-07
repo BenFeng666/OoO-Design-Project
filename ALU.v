@@ -20,6 +20,7 @@ always @(*) begin
     4'b0111: result = $signed(A)>>>B[4:0];
     4'b1000: result = ($signed(A)<$signed(B))? 32'd1:32'd0;
     4'b1001: result = (A<B)? 32'd1:32'd0;
+    4'b1011: result = A*B;
     default: result=32'b0; 
     endcase
 
