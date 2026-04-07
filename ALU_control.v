@@ -20,6 +20,10 @@ always @(*) begin
     begin
         ctrl=4'b0100;//^
     end 
+    else if (instruction[14:12]==3'b000 && instruction[31:25]==7'b0000001)
+    begin
+    ctrl=4'b1011; // mul
+    end
     else if (instruction[14:12]==3'b110 && instruction[31:25]==7'b0000000)
     begin
         ctrl=4'b0011;//or
