@@ -12,7 +12,7 @@ We are currently establishing the **In-Order Baseline**. This ensures that the f
 
 ### Project Roadmap
 - [x] **Phase 0:** Architecture Design & ISA Definition
-- [> ] **Phase 1:** In-Order Pipeline (Testing passed)
+- [X] **Phase 1:** In-Order Pipeline (Testing passed)
 - [> ] **Phase 2:** Out of Order Pipeline (Started)
 - [ ] **Phase 3:** Testing and implementing on FPGA (Not started)
 
