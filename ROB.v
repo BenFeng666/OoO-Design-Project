@@ -18,6 +18,14 @@ module ROB (
     output reg [4:0] commit_addr,
     output reg [31:0] commit_data,
     output reg commit_reg_write
+    input  wire [2:0] lookup_tag1,
+    input  wire [2:0] lookup_tag2,
+    output wire lookup_valid1,
+    output wire lookup_ready1,
+    output wire [31:0] lookup_value1,
+    output wire lookup_valid2,
+    output wire lookup_ready2,
+    output wire [31:0] lookup_value2,
 );
 
 reg valid [7:0];
@@ -32,6 +40,13 @@ reg [3:0] count;
 integer i;
 assign rob_full = (count == 4'd8);
 assign rob_empty = (count == 4'd0);
+assign lookup_valid1 = valid[lookup_tag1];
+assign lookup_ready1 = ready[lookup_tag1];
+assign lookup_value1 = value[lookup_tag1];
+
+assign lookup_valid2 = valid[lookup_tag2];
+assign lookup_ready2 = ready[lookup_tag2];
+assign lookup_value2 = value[lookup_tag2];
 
 always @(posedge clk or negedge rst) begin
   if (!rst) begin
