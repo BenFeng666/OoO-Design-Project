@@ -316,9 +316,54 @@ initial begin
         $display("TEST 6 FAIL");
     end
 
+        // ============================================================
+    // TEST 7: OLDER SLOW OP, YOUNGER FAST OP
+    // x1=7 x2=3 x6=2 x7=5
+    //
+    // inst0: mul x3 = x1 * x7 = 35   (older, should be slow if MUL is multi-cycle)
+    // inst1: add x4 = x6 + x2 = 5    (younger, independent, should finish earlier)
+    //
+    // OoO proof goal:
+    // - younger add may execute/finish before older mul
+    // - but ROB must still commit x3 first, then x4
+    //
+    // final architectural state must be:
+    // x3 = 35
+    // x4 = 5
+    // ============================================================
     $display("\n==================================================");
-    $display("TOTAL PASSED = %0d / 6", pass_count);
+    $display("TEST 7: OLDER SLOW OP, YOUNGER FAST OP");
     $display("==================================================");
+
+    clear_imem;
+    reset_core;
+    clear_regfile;
+    preload_basic_regs;
+
+    uut.u_imem.inst_mem[0] = 32'h027081b3; // mul x3, x1, x7   -> 7*5 = 35
+    uut.u_imem.inst_mem[1] = 32'h00230233; // add x4, x6, x2   -> 2+3 = 5
+    uut.u_imem.inst_mem[2] = 32'h00000013;
+    uut.u_imem.inst_mem[3] = 32'h00000013;
+    uut.u_imem.inst_mem[4] = 32'h00000013;
+    uut.u_imem.inst_mem[5] = 32'h00000013;
+    uut.u_imem.inst_mem[6] = 32'h00000013;
+    uut.u_imem.inst_mem[7] = 32'h00000013;
+
+    run_cycles(30);
+
+    if (uut.u_reg_file.store_unit[3] == 32'd35 &&
+        uut.u_reg_file.store_unit[4] == 32'd5) begin
+        $display("TEST 7 PASS");
+        pass_count = pass_count + 1;
+    end else begin
+        $display("TEST 7 FAIL");
+    end
+
+    $display("\n==================================================");
+    $display("TOTAL PASSED = %0d / 7", pass_count);
+    $display("==================================================");
+
+    
 
     $finish;
 end
