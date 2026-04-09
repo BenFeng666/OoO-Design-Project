@@ -5,27 +5,27 @@ module ROB (
     input wire dispatch_valid,
     input wire [4:0] dispatch_rd,
     input wire dispatch_reg_write,
-    output reg [2:0] dispatch_rob_idx,
+    output wire [2:0] dispatch_rob_idx,
     output wire rob_full,
     output wire rob_empty,
 
     input wire wb_valid,
     input wire [2:0] wb_rob_idx,
     input wire [31:0] wb_value,
-    output reg [2:0] commit_rob_idx
+    output reg [2:0] commit_rob_idx,
 
     output reg commit_valid,
     output reg [4:0] commit_addr,
     output reg [31:0] commit_data,
-    output reg commit_reg_write
-    input  wire [2:0] lookup_tag1,
-    input  wire [2:0] lookup_tag2,
+    output reg commit_reg_write,
+    input wire [2:0] lookup_tag1,
+    input wire [2:0] lookup_tag2,
     output wire lookup_valid1,
     output wire lookup_ready1,
     output wire [31:0] lookup_value1,
     output wire lookup_valid2,
     output wire lookup_ready2,
-    output wire [31:0] lookup_value2,
+    output wire [31:0] lookup_value2
 );
 
 reg valid [7:0];
@@ -47,10 +47,11 @@ assign lookup_value1 = value[lookup_tag1];
 assign lookup_valid2 = valid[lookup_tag2];
 assign lookup_ready2 = ready[lookup_tag2];
 assign lookup_value2 = value[lookup_tag2];
+assign dispatch_rob_idx = tail;
 
 always @(posedge clk or negedge rst) begin
   if (!rst) begin
-    dispatch_rob_idx <= 3'b0;
+    //dispatch_rob_idx <= 3'b0;
     commit_valid <= 1'b0;
     commit_addr <= 5'b0;
     commit_data <= 32'b0;
@@ -80,7 +81,7 @@ always @(posedge clk or negedge rst) begin
         ready[tail] <=1'b0; // not ready for commit
         addr[tail] <= dispatch_rd; // store the register address
         reg_write[tail]<= dispatch_reg_write;
-        dispatch_rob_idx <= tail; 
+        //dispatch_rob_idx <= tail; 
         tail <= tail + 1'b1;                                                                                                                                                                                                                                                                                                                                                                        
         
     end
