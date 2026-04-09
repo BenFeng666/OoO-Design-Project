@@ -359,8 +359,56 @@ initial begin
         $display("TEST 7 FAIL");
     end
 
+        // ============================================================
+    // TEST 8: THREE-INSTRUCTION RAW CHAIN + ONE INDEPENDENT YOUNGER
+    // x1=7 x2=3 x7=5
+    //
+    // add x3 = x1 + x2 = 10
+    // sub x4 = x3 - x2 = 7      (depends on x3)
+    // mul x5 = x4 * x2 = 21     (depends on x4)
+    // add x6 = x7 + x2 = 8      (independent younger instruction)
+    //
+    // Goal:
+    // - first three are chained and should serialize by dependency
+    // - fourth is independent and should be able to execute earlier
+    //   once you have enough execution resources
+    // - commit must still remain in order
+    //
+    // final: x3=10, x4=7, x5=21, x6=8
+    // ============================================================
     $display("\n==================================================");
-    $display("TOTAL PASSED = %0d / 7", pass_count);
+    $display("TEST 8: RAW CHAIN + INDEPENDENT YOUNGER");
+    $display("==================================================");
+
+    clear_imem;
+    reset_core;
+    clear_regfile;
+    preload_basic_regs;
+
+    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2   -> 10
+    uut.u_imem.inst_mem[1] = 32'h40218233; // sub x4, x3, x2   -> 7
+    uut.u_imem.inst_mem[2] = 32'h022202b3; // mul x5, x4, x2   -> 21
+    uut.u_imem.inst_mem[3] = 32'h00238333; // add x6, x7, x2   -> 8
+    uut.u_imem.inst_mem[4] = 32'h00000013;
+    uut.u_imem.inst_mem[5] = 32'h00000013;
+    uut.u_imem.inst_mem[6] = 32'h00000013;
+    uut.u_imem.inst_mem[7] = 32'h00000013;
+    uut.u_imem.inst_mem[8] = 32'h00000013;
+
+    run_cycles(32);
+
+    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
+        uut.u_reg_file.store_unit[4] == 32'd7  &&
+        uut.u_reg_file.store_unit[5] == 32'd21 &&
+        uut.u_reg_file.store_unit[6] == 32'd8) begin
+        $display("TEST 8 PASS");
+        pass_count = pass_count + 1;
+    end else begin
+        $display("TEST 8 FAIL");
+    end
+
+    $display("\n==================================================");
+    $display("TOTAL PASSED = %0d / 8", pass_count);
     $display("==================================================");
 
     
