@@ -42,7 +42,7 @@ wire        jump;
 
 //
 // =========================
-// ID/EX pipeline register wires
+// old pipeline wires (kept)
 // =========================
 //
 wire [31:0] ex_rs1;
@@ -59,20 +59,10 @@ wire [4:0]  ex_rg_addr;
 wire        ex_rg_WE;
 wire [31:0] ex_pc;
 
-//
-// =========================
-// EX stage wires
-// =========================
-//
 wire [31:0] alu_result;
 wire        zero;
 wire        negative;
 
-//
-// =========================
-// EX/MEM pipeline register wires
-// =========================
-//
 wire        mem_zero;
 wire        mem_negative;
 wire [31:0] mem_alu_result;
@@ -83,29 +73,14 @@ wire [31:0] mem_write_data;
 wire [4:0]  mem_rg_addr;
 wire        mem_rg_WE;
 
-//
-// =========================
-// MEM stage wires
-// =========================
-//
 wire [31:0] mem_data;
 
-//
-// =========================
-// MEM/WB pipeline register wires
-// =========================
-//
 wire        wb_rg_WE;
 wire [4:0]  wb_rg_addr;
 wire [31:0] wb_alu_result;
 wire [31:0] wb_mem_data;
 wire        wb_MemtoReg;
 
-//
-// =========================
-// WB stage wires
-// =========================
-//
 wire [31:0] wb_data;
 
 //
@@ -137,15 +112,12 @@ wire        commit_valid;
 wire [4:0]  commit_addr;
 wire [31:0] commit_data;
 wire        commit_reg_write;
-
-// NOTE:
-// This should really come from ROB at commit time.
-// Add it to ROB later if your RAT needs exact matching to clear mappings safely.
 wire [2:0]  commit_rob_idx;
 
 // Issue Queue dispatch side
 wire        dispatch_valid_iq;
 wire [3:0]  dispatch_op;
+wire [2:0]  dispatch_dest_tag;
 reg         dispatch_src1_ready;
 reg  [2:0]  dispatch_src1_tag;
 reg  [31:0] dispatch_src1_value;
@@ -165,17 +137,49 @@ wire        iq_full;
 wire        cdb_valid;
 wire [2:0]  cdb_tag;
 wire [31:0] cdb_value;
+
+// ROB lookup wires
 wire        rob_lookup_valid1;
 wire        rob_lookup_ready1;
 wire [31:0] rob_lookup_value1;
 wire        rob_lookup_valid2;
 wire        rob_lookup_ready2;
 wire [31:0] rob_lookup_value2;
+
 // OoO ALU result
 wire [31:0] ooo_alu_result;
 wire        ooo_zero;
 wire        ooo_negative;
-wire [2:0] dispatch_dest_tag;
+
+//
+// =========================
+// decode: supported OoO ops
+// current backend supports only:
+// add / sub / mul
+// =========================
+//
+wire is_rtype;
+wire is_add;
+wire is_sub;
+wire is_mul;
+wire is_ooo_supported;
+
+assign is_rtype = (id_instruction[6:0] == 7'b0110011);
+
+assign is_add = is_rtype &&
+                (id_instruction[14:12] == 3'b000) &&
+                (id_instruction[31:25] == 7'b0000000);
+
+assign is_sub = is_rtype &&
+                (id_instruction[14:12] == 3'b000) &&
+                (id_instruction[31:25] == 7'b0100000);
+
+assign is_mul = is_rtype &&
+                (id_instruction[14:12] == 3'b000) &&
+                (id_instruction[31:25] == 7'b0000001);
+
+assign is_ooo_supported = is_add || is_sub || is_mul;
+
 //
 // =========================
 // Basic control / PC logic
@@ -185,18 +189,19 @@ assign pc4           = pc + 32'd4;
 assign branch_target = pc + imm;
 assign jal_target    = pc + imm;
 
-assign pc_sel = (jump)            ? 2'b11 :
-                (Branch && ooo_zero)  ? 2'b01 :
-                                       2'b00;
+// branch path is not really supported yet in OoO backend,
+// keep pc_sel simple for now
+assign pc_sel = (jump) ? 2'b11 :
+                2'b00;
 
 //
 // =========================
-// Temporary OoO dispatch logic
+// OoO dispatch logic
 // =========================
 //
-assign dispatch_valid_iq   = ~rob_full & ~iq_full & WE;
-assign dispatch_op         = alu_ctrl;
-assign dispatch_dest_tag   = dispatch_rob_idx;
+assign dispatch_valid_iq = is_ooo_supported && !rob_full && !iq_full;
+assign dispatch_op       = alu_ctrl;
+assign dispatch_dest_tag = dispatch_rob_idx;
 
 //
 // =========================
@@ -209,13 +214,7 @@ assign cdb_value = ooo_alu_result;
 
 //
 // =========================
-// Temporary placeholder
-// =========================
-//
-assign commit_rob_idx = cdb_tag;
-
-//
-// =========================
+// frontend
 // =========================
 //
 PC u_pc (
@@ -273,7 +272,7 @@ ALU_ctrl u_alu_ctrl (
 //
 // =========================
 // Architectural register file
-// Commit writes back here
+// commit writes back here
 // =========================
 //
 reg_file u_reg_file (
@@ -290,41 +289,9 @@ reg_file u_reg_file (
 
 //
 // =========================
-// Old in-order pipeline blocks
-// Kept for now so frontend/control still exists
+// OoO execute ALU
 // =========================
 //
-// ID_EX u_id_ex (
-//     .clk(clk),
-//     .rst(rst),
-//     .rs1(rs1_data),
-//     .rs2(rs2_data),
-//     .imm(imm),
-//     .ALUSrc(ALUSrc),
-//     .MemRead(MemRead),
-//     .MemWrite(MemWrite),
-//     .MemtoReg(MemtoReg),
-//     .Branch(Branch),
-//     .jump(jump),
-//     .ctrl(alu_ctrl),
-//     .rg_addr(id_instruction[11:7]),
-//     .rg_WE(WE),
-//     .ex_rs1(ex_rs1),
-//     .ex_rs2(ex_rs2),
-//     .ex_imm(ex_imm),
-//     .ex_ctrl(ex_ctrl),
-//     .ex_ALUSrc(ex_ALUSrc),
-//     .ex_MemRead(ex_MemRead),
-//     .ex_MemWrite(ex_MemWrite),
-//     .ex_MemtoReg(ex_MemtoReg),
-//     .ex_Branch(ex_Branch),
-//     .ex_rg_addr(ex_rg_addr),
-//     .ex_rg_WE(ex_rg_WE),
-//     .ex_jump(ex_jump),
-//     .pc(id_pc),
-//     .ex_pc(ex_pc)
-// );
-
 ALU u_alu (
     .A(issue_src1),
     .B(issue_src2),
@@ -333,64 +300,6 @@ ALU u_alu (
     .zero(ooo_zero),
     .negative(ooo_negative)
 );
-
-// ex_mem u_ex_mem (
-//     .clk(clk),
-//     .rst(rst),
-//     .zero(zero),
-//     .negative(negative),
-//     .alu_result(alu_result),
-//     .MemRead(ex_MemRead),
-//     .MemWrite(ex_MemWrite),
-//     .MemtoReg(ex_MemtoReg),
-//     .rg_WE(ex_rg_WE),
-//     .rg_addr(ex_rg_addr),
-//     .address(alu_result),
-//     .write_data(ex_rs2),
-//     .rs2(ex_rs2),
-//     .mem_rg_WE(mem_rg_WE),
-//     .mem_zero(mem_zero),
-//     .mem_negative(mem_negative),
-//     .mem_alu_result(mem_alu_result),
-//     .mem_MemRead(mem_MemRead),
-//     .mem_MemWrite(mem_MemWrite),
-//     .mem_MemtoReg(mem_MemtoReg),
-//     .mem_address(),
-//     .mem_rg_addr(mem_rg_addr),
-//     .mem_write_data(mem_write_data)
-// );
-
-// data_mem u_data_mem (
-//     .clk(clk),
-//     .rst(rst),
-//     .mem_read(mem_MemRead),
-//     .mem_write(mem_MemWrite),
-//     .address(mem_alu_result),
-//     .write_data(mem_write_data),
-//     .read_data(mem_data)
-// );
-
-// mem_wb u_mem_wb (
-//     .clk(clk),
-//     .rst(rst),
-//     .alu_result(mem_alu_result),
-//     .mem_data(mem_data),
-//     .MemtoReg(mem_MemtoReg),
-//     .reg_WE(mem_rg_WE),
-//     .rg_addr(mem_rg_addr),
-//     .wb_rg_WE(wb_rg_WE),
-//     .wb_rg_addr(wb_rg_addr),
-//     .wb_alu_result(wb_alu_result),
-//     .wb_mem_data(wb_mem_data),
-//     .wb_MemtoReg(wb_MemtoReg)
-// );
-
-// wb_mux u_wb_mux (
-//     .select(wb_MemtoReg),
-//     .alu_result(wb_alu_result),
-//     .mem_data(wb_mem_data),
-//     .wb_data(wb_data)
-// );
 
 //
 // =========================
@@ -420,7 +329,7 @@ ROB u_rob (
 
     .dispatch_valid(dispatch_valid_iq),
     .dispatch_rd(id_instruction[11:7]),
-    .dispatch_reg_write(WE),
+    .dispatch_reg_write(dispatch_valid_iq),
     .dispatch_rob_idx(dispatch_rob_idx),
     .rob_full(rob_full),
     .rob_empty(rob_empty),
@@ -428,6 +337,7 @@ ROB u_rob (
     .wb_valid(cdb_valid),
     .wb_rob_idx(cdb_tag),
     .wb_value(cdb_value),
+    .commit_rob_idx(commit_rob_idx),
 
     .commit_valid(commit_valid),
     .commit_addr(commit_addr),
@@ -443,6 +353,7 @@ ROB u_rob (
     .lookup_ready2(rob_lookup_ready2),
     .lookup_value2(rob_lookup_value2)
 );
+
 issue_queue u_issue_queue (
     .clk(clk),
     .rst(rst),
@@ -465,9 +376,6 @@ issue_queue u_issue_queue (
     .issue_src2(issue_src2),
     .issue_dest_tag(issue_dest_tag)
 );
-
-
-
 
 always @(*) begin
     // defaults
@@ -529,4 +437,5 @@ always @(*) begin
         end
     endcase
 end
+
 endmodule
