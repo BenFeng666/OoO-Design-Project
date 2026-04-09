@@ -102,21 +102,49 @@ always @(posedge clk or negedge rst) begin
         // - This behaves like a true issue queue (holes are reused)
                 
         if (dispatch_valid && !iq_full) begin : dispatch_loop
-            for (i = 0; i < 8; i = i + 1) begin
-                if (!IQ[i][79]) begin
-                    IQ[i][0] <= dispatch_src1_ready;
-                    IQ[i][3:1] <= dispatch_src1_tag;
-                    IQ[i][35:4] <= dispatch_src1_value;
-                    IQ[i][36] <= dispatch_src2_ready;
-                    IQ[i][39:37] <= dispatch_src2_tag;
-                    IQ[i][71:40] <= dispatch_src2_value;
-                    IQ[i][75:72] <= dispatch_op;
-                    IQ[i][78:76] <= dispatch_dest_tag;
-                    IQ[i][79] <= 1'b1;
-                    disable dispatch_loop;
-                end
+    for (i = 0; i < 8; i = i + 1) begin
+        if (!IQ[i][79]) begin
+            // src1
+            if (dispatch_src1_ready) begin
+                IQ[i][0]    <= 1'b1;
+                IQ[i][3:1]  <= 3'b0;
+                IQ[i][35:4] <= dispatch_src1_value;
             end
+            else if (cdb_valid && (dispatch_src1_tag == cdb_tag)) begin
+                IQ[i][0]    <= 1'b1;
+                IQ[i][3:1]  <= 3'b0;
+                IQ[i][35:4] <= cdb_value;
+            end
+            else begin
+                IQ[i][0]    <= 1'b0;
+                IQ[i][3:1]  <= dispatch_src1_tag;
+                IQ[i][35:4] <= 32'b0;
+            end
+
+            // src2
+            if (dispatch_src2_ready) begin
+                IQ[i][36]    <= 1'b1;
+                IQ[i][39:37] <= 3'b0;
+                IQ[i][71:40] <= dispatch_src2_value;
+            end
+            else if (cdb_valid && (dispatch_src2_tag == cdb_tag)) begin
+                IQ[i][36]    <= 1'b1;
+                IQ[i][39:37] <= 3'b0;
+                IQ[i][71:40] <= cdb_value;
+            end
+            else begin
+                IQ[i][36]    <= 1'b0;
+                IQ[i][39:37] <= dispatch_src2_tag;
+                IQ[i][71:40] <= 32'b0;
+            end
+
+            IQ[i][75:72] <= dispatch_op;
+            IQ[i][78:76] <= dispatch_dest_tag;
+            IQ[i][79]    <= 1'b1;
+            disable dispatch_loop;
         end
+    end
+end
 
         if (cdb_valid) begin
         for (k=0; k<8; k++) begin 
