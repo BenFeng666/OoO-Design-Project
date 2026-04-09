@@ -12,6 +12,7 @@ module ROB (
     input wire wb_valid,
     input wire [2:0] wb_rob_idx,
     input wire [31:0] wb_value,
+    output reg [2:0] commit_rob_idx
 
     output reg commit_valid,
     output reg [4:0] commit_addr,
@@ -84,6 +85,7 @@ always @(posedge clk or negedge rst) begin
         head <= head +1'b1; 
         valid[head] <= 1'b0; // that slot is free again
         ready[head] <= 1'b0;
+        commit_rob_idx = head;
          end
     if (!(!rob_full && dispatch_valid) && ((ready[head]) && (valid[head]))) begin 
         count <= count -1; end
