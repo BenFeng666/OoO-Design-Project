@@ -146,13 +146,12 @@ wire [2:0]  commit_rob_idx;
 // Issue Queue dispatch side
 wire        dispatch_valid_iq;
 wire [3:0]  dispatch_op;
-wire        dispatch_src1_ready;
-wire [2:0]  dispatch_src1_tag;
-wire [31:0] dispatch_src1_value;
-wire        dispatch_src2_ready;
-wire [2:0]  dispatch_src2_tag;
-wire [31:0] dispatch_src2_value;
-wire [2:0]  dispatch_dest_tag;
+reg         dispatch_src1_ready;
+reg  [2:0]  dispatch_src1_tag;
+reg  [31:0] dispatch_src1_value;
+reg         dispatch_src2_ready;
+reg  [2:0]  dispatch_src2_tag;
+reg  [31:0] dispatch_src2_value;
 
 // Issue Queue issue side
 wire        issue_valid;
@@ -166,23 +165,28 @@ wire        iq_full;
 wire        cdb_valid;
 wire [2:0]  cdb_tag;
 wire [31:0] cdb_value;
-
+wire        rob_lookup_valid1;
+wire        rob_lookup_ready1;
+wire [31:0] rob_lookup_value1;
+wire        rob_lookup_valid2;
+wire        rob_lookup_ready2;
+wire [31:0] rob_lookup_value2;
 // OoO ALU result
 wire [31:0] ooo_alu_result;
 wire        ooo_zero;
 wire        ooo_negative;
-
+wire [2:0] dispatch_dest_tag;
 //
 // =========================
 // Basic control / PC logic
 // =========================
 //
 assign pc4           = pc + 32'd4;
-assign branch_target = ex_pc + ex_imm;
-assign jal_target    = ex_pc + ex_imm;
+assign branch_target = pc + imm;
+assign jal_target    = pc + imm;
 
-assign pc_sel = (ex_jump)            ? 2'b11 :
-                (ex_Branch && zero)  ? 2'b01 :
+assign pc_sel = (jump)            ? 2'b11 :
+                (Branch && ooo_zero)  ? 2'b01 :
                                        2'b00;
 
 //
@@ -193,14 +197,6 @@ assign pc_sel = (ex_jump)            ? 2'b11 :
 assign dispatch_valid_iq   = ~rob_full & ~iq_full & WE;
 assign dispatch_op         = alu_ctrl;
 assign dispatch_dest_tag   = dispatch_rob_idx;
-
-assign dispatch_src1_ready = ~rs1_renamed;
-assign dispatch_src1_tag   = rs1_tag;
-assign dispatch_src1_value = rs1_data;
-
-assign dispatch_src2_ready = ~rs2_renamed;
-assign dispatch_src2_tag   = rs2_tag;
-assign dispatch_src2_value = rs2_data;
 
 //
 // =========================
@@ -298,103 +294,103 @@ reg_file u_reg_file (
 // Kept for now so frontend/control still exists
 // =========================
 //
-ID_EX u_id_ex (
-    .clk(clk),
-    .rst(rst),
-    .rs1(rs1_data),
-    .rs2(rs2_data),
-    .imm(imm),
-    .ALUSrc(ALUSrc),
-    .MemRead(MemRead),
-    .MemWrite(MemWrite),
-    .MemtoReg(MemtoReg),
-    .Branch(Branch),
-    .jump(jump),
-    .ctrl(alu_ctrl),
-    .rg_addr(id_instruction[11:7]),
-    .rg_WE(WE),
-    .ex_rs1(ex_rs1),
-    .ex_rs2(ex_rs2),
-    .ex_imm(ex_imm),
-    .ex_ctrl(ex_ctrl),
-    .ex_ALUSrc(ex_ALUSrc),
-    .ex_MemRead(ex_MemRead),
-    .ex_MemWrite(ex_MemWrite),
-    .ex_MemtoReg(ex_MemtoReg),
-    .ex_Branch(ex_Branch),
-    .ex_rg_addr(ex_rg_addr),
-    .ex_rg_WE(ex_rg_WE),
-    .ex_jump(ex_jump),
-    .pc(id_pc),
-    .ex_pc(ex_pc)
-);
+// ID_EX u_id_ex (
+//     .clk(clk),
+//     .rst(rst),
+//     .rs1(rs1_data),
+//     .rs2(rs2_data),
+//     .imm(imm),
+//     .ALUSrc(ALUSrc),
+//     .MemRead(MemRead),
+//     .MemWrite(MemWrite),
+//     .MemtoReg(MemtoReg),
+//     .Branch(Branch),
+//     .jump(jump),
+//     .ctrl(alu_ctrl),
+//     .rg_addr(id_instruction[11:7]),
+//     .rg_WE(WE),
+//     .ex_rs1(ex_rs1),
+//     .ex_rs2(ex_rs2),
+//     .ex_imm(ex_imm),
+//     .ex_ctrl(ex_ctrl),
+//     .ex_ALUSrc(ex_ALUSrc),
+//     .ex_MemRead(ex_MemRead),
+//     .ex_MemWrite(ex_MemWrite),
+//     .ex_MemtoReg(ex_MemtoReg),
+//     .ex_Branch(ex_Branch),
+//     .ex_rg_addr(ex_rg_addr),
+//     .ex_rg_WE(ex_rg_WE),
+//     .ex_jump(ex_jump),
+//     .pc(id_pc),
+//     .ex_pc(ex_pc)
+// );
 
 ALU u_alu (
-    .A(ex_rs1),
-    .B(ex_ALUSrc ? ex_imm : ex_rs2),
-    .ctrl(ex_ctrl),
-    .result(alu_result),
-    .zero(zero),
-    .negative(negative)
+    .A(issue_src1),
+    .B(issue_src2),
+    .ctrl(issue_op),
+    .result(ooo_alu_result),
+    .zero(ooo_zero),
+    .negative(ooo_negative)
 );
 
-ex_mem u_ex_mem (
-    .clk(clk),
-    .rst(rst),
-    .zero(zero),
-    .negative(negative),
-    .alu_result(alu_result),
-    .MemRead(ex_MemRead),
-    .MemWrite(ex_MemWrite),
-    .MemtoReg(ex_MemtoReg),
-    .rg_WE(ex_rg_WE),
-    .rg_addr(ex_rg_addr),
-    .address(alu_result),
-    .write_data(ex_rs2),
-    .rs2(ex_rs2),
-    .mem_rg_WE(mem_rg_WE),
-    .mem_zero(mem_zero),
-    .mem_negative(mem_negative),
-    .mem_alu_result(mem_alu_result),
-    .mem_MemRead(mem_MemRead),
-    .mem_MemWrite(mem_MemWrite),
-    .mem_MemtoReg(mem_MemtoReg),
-    .mem_address(),
-    .mem_rg_addr(mem_rg_addr),
-    .mem_write_data(mem_write_data)
-);
+// ex_mem u_ex_mem (
+//     .clk(clk),
+//     .rst(rst),
+//     .zero(zero),
+//     .negative(negative),
+//     .alu_result(alu_result),
+//     .MemRead(ex_MemRead),
+//     .MemWrite(ex_MemWrite),
+//     .MemtoReg(ex_MemtoReg),
+//     .rg_WE(ex_rg_WE),
+//     .rg_addr(ex_rg_addr),
+//     .address(alu_result),
+//     .write_data(ex_rs2),
+//     .rs2(ex_rs2),
+//     .mem_rg_WE(mem_rg_WE),
+//     .mem_zero(mem_zero),
+//     .mem_negative(mem_negative),
+//     .mem_alu_result(mem_alu_result),
+//     .mem_MemRead(mem_MemRead),
+//     .mem_MemWrite(mem_MemWrite),
+//     .mem_MemtoReg(mem_MemtoReg),
+//     .mem_address(),
+//     .mem_rg_addr(mem_rg_addr),
+//     .mem_write_data(mem_write_data)
+// );
 
-data_mem u_data_mem (
-    .clk(clk),
-    .rst(rst),
-    .mem_read(mem_MemRead),
-    .mem_write(mem_MemWrite),
-    .address(mem_alu_result),
-    .write_data(mem_write_data),
-    .read_data(mem_data)
-);
+// data_mem u_data_mem (
+//     .clk(clk),
+//     .rst(rst),
+//     .mem_read(mem_MemRead),
+//     .mem_write(mem_MemWrite),
+//     .address(mem_alu_result),
+//     .write_data(mem_write_data),
+//     .read_data(mem_data)
+// );
 
-mem_wb u_mem_wb (
-    .clk(clk),
-    .rst(rst),
-    .alu_result(mem_alu_result),
-    .mem_data(mem_data),
-    .MemtoReg(mem_MemtoReg),
-    .reg_WE(mem_rg_WE),
-    .rg_addr(mem_rg_addr),
-    .wb_rg_WE(wb_rg_WE),
-    .wb_rg_addr(wb_rg_addr),
-    .wb_alu_result(wb_alu_result),
-    .wb_mem_data(wb_mem_data),
-    .wb_MemtoReg(wb_MemtoReg)
-);
+// mem_wb u_mem_wb (
+//     .clk(clk),
+//     .rst(rst),
+//     .alu_result(mem_alu_result),
+//     .mem_data(mem_data),
+//     .MemtoReg(mem_MemtoReg),
+//     .reg_WE(mem_rg_WE),
+//     .rg_addr(mem_rg_addr),
+//     .wb_rg_WE(wb_rg_WE),
+//     .wb_rg_addr(wb_rg_addr),
+//     .wb_alu_result(wb_alu_result),
+//     .wb_mem_data(wb_mem_data),
+//     .wb_MemtoReg(wb_MemtoReg)
+// );
 
-wb_mux u_wb_mux (
-    .select(wb_MemtoReg),
-    .alu_result(wb_alu_result),
-    .mem_data(wb_mem_data),
-    .wb_data(wb_data)
-);
+// wb_mux u_wb_mux (
+//     .select(wb_MemtoReg),
+//     .alu_result(wb_alu_result),
+//     .mem_data(wb_mem_data),
+//     .wb_data(wb_data)
+// );
 
 //
 // =========================
@@ -421,22 +417,32 @@ RAT u_rat (
 ROB u_rob (
     .clk(clk),
     .rst(rst),
+
     .dispatch_valid(dispatch_valid_iq),
     .dispatch_rd(id_instruction[11:7]),
     .dispatch_reg_write(WE),
     .dispatch_rob_idx(dispatch_rob_idx),
     .rob_full(rob_full),
     .rob_empty(rob_empty),
+
     .wb_valid(cdb_valid),
     .wb_rob_idx(cdb_tag),
     .wb_value(cdb_value),
+
     .commit_valid(commit_valid),
     .commit_addr(commit_addr),
     .commit_data(commit_data),
-    .commit_reg_write(commit_reg_write)
-    .commit_rob_idx(commit_rob_idx)
-);
+    .commit_reg_write(commit_reg_write),
 
+    .lookup_tag1(rs1_tag),
+    .lookup_tag2(rs2_tag),
+    .lookup_valid1(rob_lookup_valid1),
+    .lookup_ready1(rob_lookup_ready1),
+    .lookup_value1(rob_lookup_value1),
+    .lookup_valid2(rob_lookup_valid2),
+    .lookup_ready2(rob_lookup_ready2),
+    .lookup_value2(rob_lookup_value2)
+);
 issue_queue u_issue_queue (
     .clk(clk),
     .rst(rst),
@@ -460,13 +466,67 @@ issue_queue u_issue_queue (
     .issue_dest_tag(issue_dest_tag)
 );
 
-ALU u_ooo_alu (
-    .A(issue_src1),
-    .B(issue_src2),
-    .ctrl(issue_op),
-    .result(ooo_alu_result),
-    .zero(ooo_zero),
-    .negative(ooo_negative)
-);
 
+
+
+always @(*) begin
+    // defaults
+    dispatch_src1_ready = 1'b0;
+    dispatch_src1_tag   = rs1_tag;
+    dispatch_src1_value = 32'b0;
+
+    case (rs1_renamed)
+        1'b0: begin
+            dispatch_src1_ready = 1'b1;
+            dispatch_src1_value = rs1_data;
+        end
+
+        1'b1: begin
+            if (rob_lookup_valid1 && rob_lookup_ready1) begin
+                dispatch_src1_ready = 1'b1;
+                dispatch_src1_value = rob_lookup_value1;
+            end
+            else begin
+                dispatch_src1_ready = 1'b0;
+                dispatch_src1_tag   = rs1_tag;
+            end
+        end
+
+        default: begin
+            dispatch_src1_ready = 1'b0;
+            dispatch_src1_tag   = rs1_tag;
+            dispatch_src1_value = 32'b0;
+        end
+    endcase
+end
+always @(*) begin
+    // defaults
+    dispatch_src2_ready = 1'b0;
+    dispatch_src2_tag   = rs2_tag;
+    dispatch_src2_value = 32'b0;
+
+    case (rs2_renamed)
+        1'b0: begin
+            dispatch_src2_ready = 1'b1;
+            dispatch_src2_value = rs2_data;
+        end
+
+        1'b1: begin
+            if (rob_lookup_valid2 && rob_lookup_ready2) begin
+                dispatch_src2_ready = 1'b1;
+                dispatch_src2_value = rob_lookup_value2;
+            end
+            else begin
+                dispatch_src2_ready = 1'b0;
+                dispatch_src2_tag   = rs2_tag;
+            end
+        end
+
+        default: begin
+            dispatch_src2_ready = 1'b0;
+            dispatch_src2_tag   = rs2_tag;
+            dispatch_src2_value = 32'b0;
+        end
+    endcase
+end
 endmodule
