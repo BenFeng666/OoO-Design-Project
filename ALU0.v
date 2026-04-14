@@ -1,4 +1,4 @@
-module ALU(
+module ALU0(
     input wire [31:0] A,
     input wire [31:0] B,
     input wire [3:0] ctrl,
