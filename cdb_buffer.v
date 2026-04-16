@@ -96,8 +96,8 @@ end
 // -----------------------------
 // Pending-entry update
 // -----------------------------
-always @(posedge clk or posedge rst) begin
-    if (rst) begin
+always @(posedge clk or negedge rst) begin
+    if (!rst) begin
         pending_value        <= 32'b0;
         pending_tag          <= 3'b0;
         pending_valid        <= 1'b0;
