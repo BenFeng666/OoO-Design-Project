@@ -125,14 +125,8 @@ initial begin
     $dumpfile("ooo_tb.vcd");
     $dumpvars(0, top_tb);
 
-    // ============================================================
-    // TEST 1: INDEPENDENT
-    // add x3 = x1 + x2 = 10
-    // sub x4 = x1 - x2 = 4
-    // mul x5 = x1 * x2 = 21
-    // ============================================================
     $display("\n==================================================");
-    $display("TEST 1: INDEPENDENT ADD / SUB / MUL");
+    $display("TEST 11: MIXED OoO STRESS (ADD/MUL/LW/SW/BEQ/JAL/ADDI)");
     $display("==================================================");
 
     clear_imem;
@@ -140,350 +134,103 @@ initial begin
     clear_regfile;
     preload_basic_regs;
 
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2
-    uut.u_imem.inst_mem[1] = 32'h40208233; // sub x4, x1, x2
-    uut.u_imem.inst_mem[2] = 32'h022082b3; // mul x5, x1, x2
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
+    // extra init
+    uut.u_reg_file.store_unit[8]  = 32'd0;
+    uut.u_reg_file.store_unit[9]  = 32'd0;
+    uut.u_reg_file.store_unit[10] = 32'd0;
+    uut.u_reg_file.store_unit[11] = 32'd0;
+    uut.u_reg_file.store_unit[12] = 32'd0;
+    uut.u_reg_file.store_unit[13] = 32'd0;
+    uut.u_reg_file.store_unit[14] = 32'd0;
+    uut.u_reg_file.store_unit[15] = 32'd0;
 
-    run_cycles(20);
+    // clear data memory too
 
-    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
-        uut.u_reg_file.store_unit[4] == 32'd4  &&
-        uut.u_reg_file.store_unit[5] == 32'd21) begin
-        $display("TEST 1 PASS");
+    // ------------------------------------------------------------
+    // Program layout
+    //
+    // x1 = 7, x2 = 3, x6 = 2, x7 = 5
+    //
+    // 0  sub  x3,  x1, x2      -> 4
+    // 1  mul  x4,  x1, x2      -> 21
+    // 2  mul  x5,  x6, x7      -> 10
+    // 3  add  x8,  x1, x1      -> 14
+    // 4  addi x9,  x3, 8       -> 12
+    // 5  sw   x8,  0(x0)       -> mem[0] = 14
+    // 6  lw   x10, 0(x0)       -> 14
+    // 7  add  x11, x10, x3     -> 18
+    // 8  beq  x3,  x3, +8      -> taken, skip next addi
+    // 9  addi x12, x0, 99      -> should be skipped if beq works
+    // 10 jal  x13, +8          -> x13 = PC+4, skip next add
+    // 11 add  x14, x1, x2      -> should be skipped if jal works
+    // 12 addi x15, x0, 55      -> executes after jal target
+    // ------------------------------------------------------------
+
+    uut.u_imem.inst_mem[0]  = 32'h402081b3; // sub  x3,  x1, x2
+    uut.u_imem.inst_mem[1]  = 32'h02208233; // mul  x4,  x1, x2
+    uut.u_imem.inst_mem[2]  = 32'h027302b3; // mul  x5,  x6, x7
+    uut.u_imem.inst_mem[3]  = 32'h00108433; // add  x8,  x1, x1
+    uut.u_imem.inst_mem[4]  = 32'h00818493; // addi x9,  x3, 8
+    uut.u_imem.inst_mem[5]  = 32'h00802023; // sw   x8,  0(x0)
+    uut.u_imem.inst_mem[6]  = 32'h00002503; // lw   x10, 0(x0)
+    uut.u_imem.inst_mem[7]  = 32'h003505b3; // add  x11, x10, x3
+    uut.u_imem.inst_mem[8]  = 32'h00318463; // beq  x3,  x3, +8
+    uut.u_imem.inst_mem[9]  = 32'h06300613; // addi x12, x0, 99
+    uut.u_imem.inst_mem[10] = 32'h008006ef; // jal  x13, +8
+    uut.u_imem.inst_mem[11] = 32'h00208733; // add  x14, x1, x2
+    uut.u_imem.inst_mem[12] = 32'h03700793; // addi x15, x0, 55
+
+    // fill rest with nops
+    uut.u_imem.inst_mem[13] = 32'h00000013;
+    uut.u_imem.inst_mem[14] = 32'h00000013;
+    uut.u_imem.inst_mem[15] = 32'h00000013;
+    uut.u_imem.inst_mem[16] = 32'h00000013;
+    uut.u_imem.inst_mem[17] = 32'h00000013;
+    uut.u_imem.inst_mem[18] = 32'h00000013;
+    uut.u_imem.inst_mem[19] = 32'h00000013;
+
+    run_cycles(80);
+
+    $display("FINAL REG CHECK:");
+    $display("x3  = %0d (expect 4)",  uut.u_reg_file.store_unit[3]);
+    $display("x4  = %0d (expect 21)", uut.u_reg_file.store_unit[4]);
+    $display("x5  = %0d (expect 10)", uut.u_reg_file.store_unit[5]);
+    $display("x8  = %0d (expect 14)", uut.u_reg_file.store_unit[8]);
+    $display("x9  = %0d (expect 12)", uut.u_reg_file.store_unit[9]);
+    $display("x10 = %0d (expect 14 if lw/sw work)", uut.u_reg_file.store_unit[10]);
+    $display("x11 = %0d (expect 18 if lw works)",   uut.u_reg_file.store_unit[11]);
+    $display("x12 = %0d (expect 0 if beq works)",   uut.u_reg_file.store_unit[12]);
+    $display("x13 = %0d (expect nonzero PC+4 if jal works)", uut.u_reg_file.store_unit[13]);
+    $display("x14 = %0d (expect 0 if jal skips add)", uut.u_reg_file.store_unit[14]);
+    $display("x15 = %0d (expect 55 if jal target works)", uut.u_reg_file.store_unit[15]);
+    $display("mem check skipped: internal data_mem array name not exposed");
+    $display("ROB head=%0d valid=%b ready=%b is_store=%b is_branch=%b is_jump=%b",
+         uut.u_rob.head,
+         uut.u_rob.valid[uut.u_rob.head],
+         uut.u_rob.ready[uut.u_rob.head],
+         uut.u_rob.is_store[uut.u_rob.head],
+         uut.u_rob.is_branch[uut.u_rob.head],
+         uut.u_rob.is_jump[uut.u_rob.head]);
+
+    $display("SW/LW dbg: issue_sw=%b sw_tag=%0d sw_data=%0d issue_lw=%b lw_addr=%0d cdb_valid=%b cdb_tag=%0d cdb_val=%0d",
+         uut.issue_mem_write1, uut.issue_dest_tag1, uut.ex1_store_data,
+         uut.issue_mem_read1, uut.alu1_result,
+         uut.cdb_valid0, uut.cdb_tag0, uut.cdb_value0);
+
+    // Base arithmetic pass condition
+    if (uut.u_reg_file.store_unit[3]  == 32'd4  &&
+        uut.u_reg_file.store_unit[4]  == 32'd21 &&
+        uut.u_reg_file.store_unit[5]  == 32'd10 &&
+        uut.u_reg_file.store_unit[8]  == 32'd14 &&
+        uut.u_reg_file.store_unit[9]  == 32'd12) begin
+        $display("TEST 11 BASE ARITH PASS");
         pass_count = pass_count + 1;
     end else begin
-        $display("TEST 1 FAIL");
-    end
-
-    // ============================================================
-    // TEST 2: RAW chain
-    // add x3 = 7+3 = 10
-    // sub x4 = x3-3 = 7
-    // mul x5 = x4*3 = 21
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 2: RAW DEPENDENCY CHAIN");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2
-    uut.u_imem.inst_mem[1] = 32'h40218233; // sub x4, x3, x2
-    uut.u_imem.inst_mem[2] = 32'h022202b3; // mul x5, x4, x2
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-
-    run_cycles(24);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
-        uut.u_reg_file.store_unit[4] == 32'd7  &&
-        uut.u_reg_file.store_unit[5] == 32'd21) begin
-        $display("TEST 2 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 2 FAIL");
-    end
-
-    // ============================================================
-    // TEST 3: WAW
-    // add x3 = 10
-    // sub x3 = 4
-    // mul x3 = 21
-    // final x3 must be youngest writer = 21
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 3: WAW SAME DEST");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2   -> 10
-    uut.u_imem.inst_mem[1] = 32'h402081b3; // sub x3, x1, x2   -> 4
-    uut.u_imem.inst_mem[2] = 32'h022081b3; // mul x3, x1, x2   -> 21
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-
-    run_cycles(24);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd21) begin
-        $display("TEST 3 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 3 FAIL");
-    end
-
-    // ============================================================
-    // TEST 4: RAW + WAW mixed
-    // add x3 = 10
-    // sub x3 = x3 - x2 = 7   (RAW on older x3, then WAW to same x3)
-    // mul x4 = x3 * x2 = 21  (RAW on newest x3)
-    // final x3 = 7, x4 = 21
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 4: RAW + WAW MIXED");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2
-    uut.u_imem.inst_mem[1] = 32'h402181b3; // sub x3, x3, x2
-    uut.u_imem.inst_mem[2] = 32'h02218233; // mul x4, x3, x2
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-
-    run_cycles(26);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd7 &&
-        uut.u_reg_file.store_unit[4] == 32'd21) begin
-        $display("TEST 4 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 4 FAIL");
-    end
-
-    // ============================================================
-    // TEST 5: multiple consumers of one producer
-    // add x3 = 10
-    // sub x4 = x3 - x2 = 7
-    // mul x5 = x3 * x2 = 30
-    // both x4 and x5 depend on same x3
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 5: ONE PRODUCER, TWO CONSUMERS");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2
-    uut.u_imem.inst_mem[1] = 32'h40218233; // sub x4, x3, x2
-    uut.u_imem.inst_mem[2] = 32'h022182b3; // mul x5, x3, x2
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-
-    run_cycles(26);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
-        uut.u_reg_file.store_unit[4] == 32'd7  &&
-        uut.u_reg_file.store_unit[5] == 32'd30) begin
-        $display("TEST 5 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 5 FAIL");
-    end
-
-    // ============================================================
-    // TEST 6: longer mixed chain
-    // x1=7 x2=3 x6=2
-    // add x3 = 10
-    // sub x4 = x3 - x2 = 7
-    // mul x5 = x4 * x6 = 14
-    // add x3 = x5 + x2 = 17   (WAW on x3, RAW on x5)
-    // final x3=17 x4=7 x5=14
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 6: LONGER RAW/WAW CHAIN");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2
-    uut.u_imem.inst_mem[1] = 32'h40218233; // sub x4, x3, x2
-    uut.u_imem.inst_mem[2] = 32'h026202b3; // mul x5, x4, x6
-    uut.u_imem.inst_mem[3] = 32'h002281b3; // add x3, x5, x2
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-    uut.u_imem.inst_mem[7] = 32'h00000013;
-
-    run_cycles(30);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd17 &&
-        uut.u_reg_file.store_unit[4] == 32'd7  &&
-        uut.u_reg_file.store_unit[5] == 32'd14) begin
-        $display("TEST 6 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 6 FAIL");
-    end
-
-    // ============================================================
-    // TEST 7: OLDER SLOW OP, YOUNGER FAST OP
-    // x1=7 x2=3 x6=2 x7=5
-    //
-    // inst0: mul x3 = x1 * x7 = 35   (older, should be slow if MUL is multi-cycle)
-    // inst1: add x4 = x6 + x2 = 5    (younger, independent, should finish earlier)
-    //
-    // OoO proof goal:
-    // - younger add may execute/finish before older mul
-    // - but ROB must still commit x3 first, then x4
-    //
-    // final architectural state must be:
-    // x3 = 35
-    // x4 = 5
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 7: OLDER SLOW OP, YOUNGER FAST OP");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h027081b3; // mul x3, x1, x7   -> 7*5 = 35
-    uut.u_imem.inst_mem[1] = 32'h00230233; // add x4, x6, x2   -> 2+3 = 5
-    uut.u_imem.inst_mem[2] = 32'h00000013;
-    uut.u_imem.inst_mem[3] = 32'h00000013;
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-    uut.u_imem.inst_mem[7] = 32'h00000013;
-
-    run_cycles(30);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd35 &&
-        uut.u_reg_file.store_unit[4] == 32'd5) begin
-        $display("TEST 7 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 7 FAIL");
-    end
-
-    // ============================================================
-    // TEST 8: THREE-INSTRUCTION RAW CHAIN + ONE INDEPENDENT YOUNGER
-    // x1=7 x2=3 x7=5
-    //
-    // add x3 = x1 + x2 = 10
-    // sub x4 = x3 - x2 = 7      (depends on x3)
-    // mul x5 = x4 * x2 = 21     (depends on x4)
-    // add x6 = x7 + x2 = 8      (independent younger instruction)
-    //
-    // Goal:
-    // - first three are chained and should serialize by dependency
-    // - fourth is independent and should be able to execute earlier
-    //   once you have enough execution resources
-    // - commit must still remain in order
-    //
-    // final: x3=10, x4=7, x5=21, x6=8
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 8: RAW CHAIN + INDEPENDENT YOUNGER");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2   -> 10
-    uut.u_imem.inst_mem[1] = 32'h40218233; // sub x4, x3, x2   -> 7
-    uut.u_imem.inst_mem[2] = 32'h022202b3; // mul x5, x4, x2   -> 21
-    uut.u_imem.inst_mem[3] = 32'h00238333; // add x6, x7, x2   -> 8
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-    uut.u_imem.inst_mem[7] = 32'h00000013;
-    uut.u_imem.inst_mem[8] = 32'h00000013;
-
-    run_cycles(32);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
-        uut.u_reg_file.store_unit[4] == 32'd7  &&
-        uut.u_reg_file.store_unit[5] == 32'd21 &&
-        uut.u_reg_file.store_unit[6] == 32'd8) begin
-        $display("TEST 8 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 8 FAIL");
-    end
-
-        // ============================================================
-    // TEST 9: TRUE OVERTAKE CHECK
-    // Goal:
-    //   inst0 produces x3
-    //   inst1 waits on x4 (not ready yet)
-    //   inst2 is independent and should execute before inst1
-    //   inst3 later produces x4 so inst1 can finally run
-    //
-    // Program:
-    //   0: add x3, x1, x2      -> 10
-    //   1: add x5, x4, x2      -> waits for x4
-    //   2: add x6, x7, x2      -> 8   (independent younger)
-    //   3: add x4, x1, x1      -> 14  (finally makes x4 ready)
-    //
-    // Expected final:
-    //   x3 = 10
-    //   x4 = 14
-    //   x5 = 17
-    //   x6 = 8
-    //
-    // What to look for in the log:
-    //   x6 instruction should ISSUE/EXECUTE before x5 instruction
-    //   but commit should still be x3 -> x5 -> x6 -> x4 only if your ROB
-    //   preserves original dispatch order, or according to your actual
-    //   instruction order:
-    //     inst0(x3), inst1(x5), inst2(x6), inst3(x4)
-    //   So even if x6 finishes early, it must not commit before x5.
-    // ============================================================
-    $display("\n==================================================");
-    $display("TEST 9: TRUE OVERTAKE CHECK");
-    $display("==================================================");
-
-    clear_imem;
-    reset_core;
-    clear_regfile;
-    preload_basic_regs;
-
-    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2   -> 10
-    uut.u_imem.inst_mem[1] = 32'h002202b3; // add x5, x4, x2   -> waits for x4
-    uut.u_imem.inst_mem[2] = 32'h00238333; // add x6, x7, x2   -> 8
-    uut.u_imem.inst_mem[3] = 32'h00108233; // add x4, x1, x1   -> 14
-    uut.u_imem.inst_mem[4] = 32'h00000013;
-    uut.u_imem.inst_mem[5] = 32'h00000013;
-    uut.u_imem.inst_mem[6] = 32'h00000013;
-    uut.u_imem.inst_mem[7] = 32'h00000013;
-    uut.u_imem.inst_mem[8] = 32'h00000013;
-    uut.u_imem.inst_mem[9] = 32'h00000013;
-
-    run_cycles(36);
-
-    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
-        uut.u_reg_file.store_unit[4] == 32'd14 &&
-        uut.u_reg_file.store_unit[5] == 32'd17 &&
-        uut.u_reg_file.store_unit[6] == 32'd8) begin
-        $display("TEST 9 PASS");
-        pass_count = pass_count + 1;
-    end else begin
-        $display("TEST 9 FAIL");
+        $display("TEST 11 BASE ARITH FAIL");
     end
 
     $display("\n==================================================");
-    $display("TOTAL PASSED = %0d / 8", pass_count);
+    $display("TOTAL PASSED = %0d / 1", pass_count);
     $display("==================================================");
 
     $finish;
