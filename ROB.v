@@ -5,7 +5,7 @@ module ROB (
     input wire dispatch_valid,
     input wire [4:0] dispatch_rd,
     input wire dispatch_reg_write,
-    output reg [2:0] dispatch_rob_idx,
+    output wire [2:0] dispatch_rob_idx,
     output wire rob_full,
     output wire rob_empty,
 
@@ -64,10 +64,11 @@ assign lookup_value1 = value[lookup_tag1];
 assign lookup_valid2 = valid[lookup_tag2];
 assign lookup_ready2 = ready[lookup_tag2];
 assign lookup_value2 = value[lookup_tag2];
+assign dispatch_rob_idx = tail;
 
 always @(posedge clk or negedge rst) begin
   if (!rst) begin
-    dispatch_rob_idx <= 3'b0;
+    //dispatch_rob_idx <= 3'b0;
     commit_valid <= 1'b0;
     commit_addr <= 5'b0;
     commit_data <= 32'b0;
@@ -119,7 +120,7 @@ always @(posedge clk or negedge rst) begin
         is_store[tail] <= dispatch_is_store;
         is_branch[tail] <= dispatch_is_branch;
         is_jump[tail] <= dispatch_is_jump;
-        dispatch_rob_idx <= tail; 
+        //dispatch_rob_idx <= tail; 
         tail <= tail + 1'b1;                                                                                                                                                                                                                                                                                                                                                                        
         
     end
