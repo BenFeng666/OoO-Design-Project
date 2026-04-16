@@ -162,9 +162,9 @@ wire        cdb_valid0;
 wire [2:0]  cdb_tag0;
 wire [31:0] cdb_value0;
 
-assign cdb_valid0 = buffered_cdb_valid;
-assign cdb_tag0   = buffered_cdb_tag;
-assign cdb_value0 = buffered_cdb_value;
+wire        buffered_branch_taken;
+wire [31:0] buffered_target;
+wire [31:0] buffered_store_data;
 
 //
 // Memory / branch-store metadata
@@ -183,6 +183,13 @@ wire [31:0] ex1_target;
 wire [31:0] ex1_store_data;
 wire [31:0] ex1_wb_value;
 
+// load/store hazard fix
+wire        load_block;
+wire        load_forward_valid;
+wire [31:0] load_forward_data;
+wire        issue1_accept;
+wire [31:0] mem_or_forward_data;
+
 //
 // PC mux control
 //
@@ -191,12 +198,49 @@ wire [31:0] jal_target;
 wire [1:0]  pc_sel;
 
 //
+// Control serialization
+//
+wire decode_control;
+wire control_commit;
+wire redirect;
+wire id_is_real;
+wire frontend_stall;
+wire flush_if_id;
+reg  control_inflight;
+
+assign decode_control = Branch || jump;
+
+// any committed branch/jump releases the frontend hold
+assign control_commit = commit_valid && (commit_is_branch || commit_is_jump);
+
+// only taken branch or jal should redirect/flush
+assign redirect =
+    (commit_valid && commit_is_jump) ||
+    (commit_valid && commit_is_branch && commit_branch_taken);
+
+always @(posedge clk or negedge rst) begin
+    if (!rst)
+        control_inflight <= 1'b0;
+    else if (control_commit)
+        control_inflight <= 1'b0;
+    else if (dispatch_valid_iq && decode_control)
+        control_inflight <= 1'b1;
+end
+
+//
 // Front-end dispatch control
 //
-assign dispatch_valid_iq = !rob_full && !iq_full &&
-                           (id_instruction != 32'b0) &&
-                           (id_instruction != 32'h00000013) &&
-                           (^id_instruction !== 1'bx);
+assign id_is_real =
+    (id_instruction != 32'b0) &&
+    (id_instruction != 32'h00000013) &&
+    (^id_instruction !== 1'bx);
+
+// dispatch only if resources are free and no older control op is in flight
+assign dispatch_valid_iq =
+    !rob_full &&
+    !iq_full &&
+    !control_inflight &&
+    id_is_real;
 
 assign dispatch_op        = alu_ctrl;
 assign dispatch_dest_tag  = dispatch_rob_idx;
@@ -209,9 +253,24 @@ assign dispatch_jump      = jump;
 assign dispatch_jump_reg  = 1'b0;
 assign imm_valid          = 1'b1;
 
+// stall fetch/decode:
+// 1) resource full
+// 2) current ID instruction is branch/jump
+// 3) older control instruction already dispatched and waiting to commit
+// release stall in the cycle the control op commits
+assign frontend_stall =
+    !control_commit &&
+    (
+        (id_is_real && (rob_full || iq_full)) ||
+        (id_is_real && decode_control) ||
+        control_inflight
+    );
+
+// only flush IF/ID on actual redirect
+assign flush_if_id = redirect;
+
 //
 // ALU1 execute-side metadata
-// beq only for branch decision right now
 //
 assign ex1_branch_taken = issue_branch1 && (issue_src11 == issue_src21);
 
@@ -225,17 +284,27 @@ assign ex1_target =
 // store data should be original rs2 value
 assign ex1_store_data = issue_src21;
 
+// block only loads that hit an older same-address store
+assign issue1_accept = !(issue_mem_read1 && load_block);
+
+// forwarded load data wins; otherwise use normal memory data
+assign mem_or_forward_data = load_forward_valid ? load_forward_data : data_mem_rdata;
+
 // jal writes PC+4 into rd
 assign ex1_wb_value =
     issue_jump1      ? (issue_pc1 + 32'd4) :
-    issue_mem_read1  ? data_mem_rdata :
+    issue_mem_read1  ? mem_or_forward_data :
                        alu1_result;
 
 assign alu1_cdb_result = ex1_wb_value;
 
-assign wb_branch_taken = ex1_branch_taken;
-assign wb_target       = ex1_target;
-assign wb_store_data   = ex1_store_data;
+assign cdb_valid0 = buffered_cdb_valid;
+assign cdb_tag0   = buffered_cdb_tag;
+assign cdb_value0 = buffered_cdb_value;
+
+assign wb_branch_taken = buffered_branch_taken;
+assign wb_target       = buffered_target;
+assign wb_store_data   = buffered_store_data;
 
 //
 // Memory path
@@ -246,7 +315,6 @@ assign data_mem_wdata = commit_store_data;
 
 //
 // PC control
-// use ROB commit result, not decode-stage jump/branch
 //
 assign pc4 = pc + 32'd4;
 assign branch_target = commit_target;
@@ -263,6 +331,7 @@ assign pc_sel =
 PC u_pc (
     .clk(clk),
     .rst(rst),
+    .stall(frontend_stall),
     .next_inst(next_pc),
     .pc(pc)
 );
@@ -283,6 +352,8 @@ instruction_mem u_imem (
 IF_ID u_if_id (
     .clk(clk),
     .rst(rst),
+    .flush(flush_if_id),
+    .stall(frontend_stall),
     .PC(pc),
     .instruction(instruction),
     .PC_4(pc4),
@@ -333,7 +404,7 @@ reg_file u_reg_file (
 data_mem u_data_mem (
     .clk(clk),
     .rst(rst),
-    .mem_read(issue_valid1 && issue_mem_read1),
+    .mem_read(issue_valid1 && issue1_accept && issue_mem_read1 && !load_forward_valid),
     .mem_write(commit_valid && commit_is_store),
     .address(data_mem_addr),
     .write_data(data_mem_wdata),
@@ -350,14 +421,23 @@ CDB_buffer u_cdb_buffer (
     .ALU0_result(alu0_wb_value),
     .ALU0_tag(alu0_wb_tag),
     .ALU0_valid(alu0_done),
+    .ALU0_branch_taken(1'b0),
+    .ALU0_target(32'b0),
+    .ALU0_store_data(32'b0),
 
     .ALU1_result(alu1_cdb_result),
     .ALU1_tag(issue_dest_tag1),
-    .ALU1_valid(issue_valid1),
+    .ALU1_valid(issue_valid1 && issue1_accept),
+    .ALU1_branch_taken(ex1_branch_taken),
+    .ALU1_target(ex1_target),
+    .ALU1_store_data(ex1_store_data),
 
     .cdb_value(buffered_cdb_value),
     .cdb_tag(buffered_cdb_tag),
-    .cdb_valid(buffered_cdb_valid)
+    .cdb_valid(buffered_cdb_valid),
+    .cdb_branch_taken(buffered_branch_taken),
+    .cdb_target(buffered_target),
+    .cdb_store_data(buffered_store_data)
 );
 
 //
@@ -377,6 +457,7 @@ RAT u_rat (
     .rs1_renamed(rs1_renamed),
     .rs1_tag(rs1_tag),
     .rs2_renamed(rs2_renamed),
+    .flush(1'b0),
     .rs2_tag(rs2_tag)
 );
 
@@ -393,6 +474,7 @@ ROB u_rob (
     .dispatch_rob_idx(dispatch_rob_idx),
     .rob_full(rob_full),
     .rob_empty(rob_empty),
+    .flush(1'b0),
 
     .wb_valid(cdb_valid0),
     .wb_rob_idx(cdb_tag0),
@@ -425,7 +507,14 @@ ROB u_rob (
     .commit_is_jump(commit_is_jump),
     .commit_branch_taken(commit_branch_taken),
     .commit_target(commit_target),
-    .commit_store_data(commit_store_data)
+    .commit_store_data(commit_store_data),
+
+    .load_check_valid(issue_valid1 && issue_mem_read1),
+    .load_check_tag(issue_dest_tag1),
+    .load_check_addr(alu1_result),
+    .load_block(load_block),
+    .load_forward_valid(load_forward_valid),
+    .load_forward_data(load_forward_data)
 );
 
 //
@@ -454,6 +543,9 @@ issue_queue u_issue_queue (
     .cdb_tag0(cdb_tag0),
     .cdb_value0(cdb_value0),
 
+    .alu0_busy(alu0_busy),
+    .alu0_done(alu0_done),
+
     .dispatch_use_imm(dispatch_use_imm),
     .dispatch_reg_write(dispatch_reg_write),
     .dispatch_mem_read(dispatch_mem_read),
@@ -461,6 +553,7 @@ issue_queue u_issue_queue (
     .dispatch_branch(dispatch_branch),
     .dispatch_jump(dispatch_jump),
     .dispatch_jump_reg(dispatch_jump_reg),
+    .flush(1'b0),
 
     .iq_full(iq_full),
 
@@ -498,8 +591,7 @@ issue_queue u_issue_queue (
     .issue_jump_reg1(issue_jump_reg1),
     .issue_dest_tag1(issue_dest_tag1),
 
-    .alu0_busy(alu0_busy),
-    .alu0_done(alu0_done)
+    .issue1_accept(issue1_accept)
 );
 
 //
@@ -548,7 +640,8 @@ always @(*) begin
             if (rob_lookup_valid1 && rob_lookup_ready1) begin
                 dispatch_src1_ready = 1'b1;
                 dispatch_src1_value = rob_lookup_value1;
-            end else begin
+            end
+            else begin
                 dispatch_src1_ready = 1'b0;
                 dispatch_src1_tag   = rs1_tag;
             end
@@ -580,7 +673,8 @@ always @(*) begin
             if (rob_lookup_valid2 && rob_lookup_ready2) begin
                 dispatch_src2_ready = 1'b1;
                 dispatch_src2_value = rob_lookup_value2;
-            end else begin
+            end
+            else begin
                 dispatch_src2_ready = 1'b0;
                 dispatch_src2_tag   = rs2_tag;
             end
