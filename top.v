@@ -4,28 +4,19 @@ module top (
 );
 
 //
-// =========================
-// IF stage wires
-// =========================
+// IF / ID
 //
 wire [31:0] pc;
 wire [31:0] next_pc;
 wire [31:0] pc4;
 wire [31:0] instruction;
 
-//
-// =========================
-// IF/ID pipeline register wires
-// =========================
-//
 wire [31:0] id_instruction;
 wire [31:0] id_pc;
 wire [31:0] id_pc4;
 
 //
-// =========================
-// ID stage wires
-// =========================
+// Decode
 //
 wire [31:0] rs1_data;
 wire [31:0] rs2_data;
@@ -41,104 +32,16 @@ wire        Branch;
 wire        jump;
 
 //
-// =========================
-// ID/EX pipeline register wires
-// =========================
+// RAT
 //
-wire [31:0] ex_rs1;
-wire [31:0] ex_rs2;
-wire [31:0] ex_imm;
-wire [3:0]  ex_ctrl;
-wire        ex_ALUSrc;
-wire        ex_MemRead;
-wire        ex_MemWrite;
-wire        ex_MemtoReg;
-wire        ex_Branch;
-wire        ex_jump;
-wire [4:0]  ex_rg_addr;
-wire        ex_rg_WE;
-wire [31:0] ex_pc;
-
-//
-// =========================
-// EX stage wires
-// =========================
-//
-wire [31:0] alu_result;
-wire        zero;
-wire        negative;
-
-//
-// =========================
-// EX/MEM pipeline register wires
-// =========================
-//
-wire        mem_zero;
-wire        mem_negative;
-wire [31:0] mem_alu_result;
-wire        mem_MemRead;
-wire        mem_MemWrite;
-wire        mem_MemtoReg;
-wire [31:0] mem_write_data;
-wire [4:0]  mem_rg_addr;
-wire        mem_rg_WE;
-wire [31:0] data_mem_addr;
-wire [31:0] data_mem_wdata;
-wire [31:0] data_mem_rdata;
-
-assign data_mem_addr  = alu1_result;
-assign data_mem_wdata = issue_src31;
-//
-// =========================
-// MEM stage wires
-// =========================
-//
-wire [31:0] mem_data;
-
-//
-// =========================
-// MEM/WB pipeline register wires
-// =========================
-//
-wire        wb_rg_WE;
-wire [4:0]  wb_rg_addr;
-wire [31:0] wb_alu_result;
-wire [31:0] wb_mem_data;
-wire        wb_MemtoReg;
-
-//
-// =========================
-// WB stage wires
-// =========================
-//
-wire [31:0] wb_data;
-
-//
-// =========================
-// PC control wires
-// =========================
-//
-wire [31:0] branch_target;
-wire [31:0] jal_target;
-wire [1:0]  pc_sel;
-
-//
-// =========================
-// OoO wires
-// =========================
-//
-
-// =========================
-// RAT wires
-// =========================
 wire        rs1_renamed;
 wire [2:0]  rs1_tag;
 wire        rs2_renamed;
 wire [2:0]  rs2_tag;
 
-// =========================
-// ROB wires
-// =========================
+//
+// ROB
+//
 wire [2:0]  dispatch_rob_idx;
 wire        rob_full;
 wire        rob_empty;
@@ -156,7 +59,6 @@ wire        commit_branch_taken;
 wire [31:0] commit_target;
 wire [31:0] commit_store_data;
 
-// ROB lookup wires
 wire        rob_lookup_valid1;
 wire        rob_lookup_ready1;
 wire [31:0] rob_lookup_value1;
@@ -164,14 +66,10 @@ wire [31:0] rob_lookup_value1;
 wire        rob_lookup_valid2;
 wire        rob_lookup_ready2;
 wire [31:0] rob_lookup_value2;
-wire [31:0] alu1_cdb_result;
 
-wire [31:0] buffered_cdb_value;
-wire [2:0]  buffered_cdb_tag;
-wire        buffered_cdb_valid;
-// =========================
-// issue queue dispatch-side wires
-// =========================
+//
+// Dispatch side
+//
 wire        dispatch_valid_iq;
 wire [3:0]  dispatch_op;
 wire [2:0]  dispatch_dest_tag;
@@ -184,7 +82,6 @@ reg         dispatch_src2_ready;
 reg  [2:0]  dispatch_src2_tag;
 reg  [31:0] dispatch_src2_value;
 
-// for full instruction support
 wire        dispatch_use_imm;
 wire        dispatch_reg_write;
 wire        dispatch_mem_read;
@@ -194,9 +91,9 @@ wire        dispatch_jump;
 wire        dispatch_jump_reg;
 wire        imm_valid;
 
-// =========================
-// issue queue issue-side wires: slot 0
-// =========================
+//
+// Issue queue outputs: slot 0
+//
 wire        issue_valid0;
 wire [3:0]  issue_alu_op0;
 wire [31:0] issue_src10;
@@ -214,9 +111,9 @@ wire        issue_jump0;
 wire        issue_jump_reg0;
 wire [2:0]  issue_dest_tag0;
 
-// =========================
-// issue queue issue-side wires: slot 1
-// =========================
+//
+// Issue queue outputs: slot 1
+//
 wire        issue_valid1;
 wire [3:0]  issue_alu_op1;
 wire [31:0] issue_src11;
@@ -236,67 +133,132 @@ wire [2:0]  issue_dest_tag1;
 
 wire        iq_full;
 
-// =========================
-// ALU0 result wires
-// =========================
+//
+// ALU0 / ALU1
+//
 wire [31:0] alu0_result;
 wire        alu0_zero;
 wire        alu0_negative;
 
-// =========================
-// ALU1 result wires
-// =========================
 wire [31:0] alu1_result;
 wire        alu1_zero;
 wire        alu1_negative;
 
-// =========================
-// writeback / CDB wires
-// =========================
-// current issue_queue only has cdb_valid0/cdb_tag0/cdb_value0
+wire        alu0_busy;
+wire        alu0_done;
+wire [31:0] alu0_wb_value;
+wire [2:0]  alu0_wb_tag;
+
+assign alu0_result = alu0_wb_value;
+
+//
+// CDB
+//
+wire [31:0] buffered_cdb_value;
+wire [2:0]  buffered_cdb_tag;
+wire        buffered_cdb_valid;
+
 wire        cdb_valid0;
 wire [2:0]  cdb_tag0;
 wire [31:0] cdb_value0;
 
-// branch/store metadata going back to ROB
+assign cdb_valid0 = buffered_cdb_valid;
+assign cdb_tag0   = buffered_cdb_tag;
+assign cdb_value0 = buffered_cdb_value;
+
+//
+// Memory / branch-store metadata
+//
+wire [31:0] data_mem_addr;
+wire [31:0] data_mem_wdata;
+wire [31:0] data_mem_rdata;
+
+wire [31:0] alu1_cdb_result;
 wire        wb_branch_taken;
 wire [31:0] wb_target;
 wire [31:0] wb_store_data;
+
+wire        ex1_branch_taken;
+wire [31:0] ex1_target;
+wire [31:0] ex1_store_data;
+wire [31:0] ex1_wb_value;
+
 //
-// =========================
-// Temporary placeholder
-// =========================
+// PC mux control
 //
-//assign commit_rob_idx = cdb_tag;
-assign dispatch_valid_iq  = !rob_full && !iq_full;
+wire [31:0] branch_target;
+wire [31:0] jal_target;
+wire [1:0]  pc_sel;
+
+//
+// Front-end dispatch control
+//
+assign dispatch_valid_iq = !rob_full && !iq_full &&
+                           (id_instruction != 32'b0) &&
+                           (id_instruction != 32'h00000013) &&
+                           (^id_instruction !== 1'bx);
+
 assign dispatch_op        = alu_ctrl;
 assign dispatch_dest_tag  = dispatch_rob_idx;
-
 assign dispatch_use_imm   = ALUSrc;
 assign dispatch_reg_write = WE;
 assign dispatch_mem_read  = MemRead;
 assign dispatch_mem_write = MemWrite;
 assign dispatch_branch    = Branch;
 assign dispatch_jump      = jump;
-
-// change this later if you distinguish jal and jalr
 assign dispatch_jump_reg  = 1'b0;
-
 assign imm_valid          = 1'b1;
-assign cdb_value0 = buffered_cdb_value;
-assign cdb_tag0   = buffered_cdb_tag;
-assign cdb_valid0 = buffered_cdb_valid;
 
-// placeholder until branch/store execute path is finished
-assign wb_branch_taken = 1'b0;
-assign wb_target       = 32'b0;
-assign wb_store_data   = 32'b0;
-assign alu1_cdb_result = issue_mem_read1 ? data_mem_rdata : alu1_result;
 //
-// =========================
+// ALU1 execute-side metadata
+// beq only for branch decision right now
+//
+assign ex1_branch_taken = issue_branch1 && (issue_src11 == issue_src21);
 
+assign ex1_target =
+    issue_jump1      ? (issue_pc1 + issue_imm1) :
+    issue_branch1    ? (issue_pc1 + issue_imm1) :
+    issue_mem_read1  ? alu1_result :
+    issue_mem_write1 ? alu1_result :
+                       32'b0;
 
-// =========================
+// store data should be original rs2 value
+assign ex1_store_data = issue_src21;
+
+// jal writes PC+4 into rd
+assign ex1_wb_value =
+    issue_jump1      ? (issue_pc1 + 32'd4) :
+    issue_mem_read1  ? data_mem_rdata :
+                       alu1_result;
+
+assign alu1_cdb_result = ex1_wb_value;
+
+assign wb_branch_taken = ex1_branch_taken;
+assign wb_target       = ex1_target;
+assign wb_store_data   = ex1_store_data;
+
+//
+// Memory path
+// loads read at ALU1 execute, stores write at commit
+//
+assign data_mem_addr  = (commit_valid && commit_is_store) ? commit_target : alu1_result;
+assign data_mem_wdata = commit_store_data;
+
+//
+// PC control
+// use ROB commit result, not decode-stage jump/branch
+//
+assign pc4 = pc + 32'd4;
+assign branch_target = commit_target;
+assign jal_target    = commit_target;
+
+assign pc_sel =
+    (commit_valid && commit_is_jump) ? 2'b10 :
+    (commit_valid && commit_is_branch && commit_branch_taken) ? 2'b01 :
+    2'b00;
+
+//
+// Core frontend
 //
 PC u_pc (
     .clk(clk),
@@ -351,10 +313,7 @@ ALU_ctrl u_alu_ctrl (
 );
 
 //
-// =========================
 // Architectural register file
-// Commit writes back here
-// =========================
 //
 reg_file u_reg_file (
     .clk(clk),
@@ -369,121 +328,28 @@ reg_file u_reg_file (
 );
 
 //
-// =========================
-// Old in-order pipeline blocks
-// Kept for now so frontend/control still exists
-// =========================
+// Data memory
 //
-// ID_EX u_id_ex (
-//     .clk(clk),
-//     .rst(rst),
-//     .rs1(rs1_data),
-//     .rs2(rs2_data),
-//     .imm(imm),
-//     .ALUSrc(ALUSrc),
-//     .MemRead(MemRead),
-//     .MemWrite(MemWrite),
-//     .MemtoReg(MemtoReg),
-//     .Branch(Branch),
-//     .jump(jump),
-//     .ctrl(alu_ctrl),
-//     .rg_addr(id_instruction[11:7]),
-//     .rg_WE(WE),
-//     .ex_rs1(ex_rs1),
-//     .ex_rs2(ex_rs2),
-//     .ex_imm(ex_imm),
-//     .ex_ctrl(ex_ctrl),
-//     .ex_ALUSrc(ex_ALUSrc),
-//     .ex_MemRead(ex_MemRead),
-//     .ex_MemWrite(ex_MemWrite),
-//     .ex_MemtoReg(ex_MemtoReg),
-//     .ex_Branch(ex_Branch),
-//     .ex_rg_addr(ex_rg_addr),
-//     .ex_rg_WE(ex_rg_WE),
-//     .ex_jump(ex_jump),
-//     .pc(id_pc),
-//     .ex_pc(ex_pc)
-// );
-
-// ALU u_alu (
-//     .A(issue_src1),
-//     .B(issue_src2),
-//     .ctrl(issue_op),
-//     .result(ooo_alu_result),
-//     .zero(ooo_zero),
-//     .negative(ooo_negative)
-// );
-
-// ex_mem u_ex_mem (
-//     .clk(clk),
-//     .rst(rst),
-//     .zero(zero),
-//     .negative(negative),
-//     .alu_result(alu_result),
-//     .MemRead(ex_MemRead),
-//     .MemWrite(ex_MemWrite),
-//     .MemtoReg(ex_MemtoReg),
-//     .rg_WE(ex_rg_WE),
-//     .rg_addr(ex_rg_addr),
-//     .address(alu_result),
-//     .write_data(ex_rs2),
-//     .rs2(ex_rs2),
-//     .mem_rg_WE(mem_rg_WE),
-//     .mem_zero(mem_zero),
-//     .mem_negative(mem_negative),
-//     .mem_alu_result(mem_alu_result),
-//     .mem_MemRead(mem_MemRead),
-//     .mem_MemWrite(mem_MemWrite),
-//     .mem_MemtoReg(mem_MemtoReg),
-//     .mem_address(),
-//     .mem_rg_addr(mem_rg_addr),
-//     .mem_write_data(mem_write_data)
-// );
-
 data_mem u_data_mem (
     .clk(clk),
     .rst(rst),
     .mem_read(issue_valid1 && issue_mem_read1),
-    .mem_write(issue_valid1 && issue_mem_write1),
+    .mem_write(commit_valid && commit_is_store),
     .address(data_mem_addr),
     .write_data(data_mem_wdata),
     .read_data(data_mem_rdata)
 );
 
-// mem_wb u_mem_wb (
-//     .clk(clk),
-//     .rst(rst),
-//     .alu_result(mem_alu_result),
-//     .mem_data(mem_data),
-//     .MemtoReg(mem_MemtoReg),
-//     .reg_WE(mem_rg_WE),
-//     .rg_addr(mem_rg_addr),
-//     .wb_rg_WE(wb_rg_WE),
-//     .wb_rg_addr(wb_rg_addr),
-//     .wb_alu_result(wb_alu_result),
-//     .wb_mem_data(wb_mem_data),
-//     .wb_MemtoReg(wb_MemtoReg)
-// );
-
-// wb_mux u_wb_mux (
-//     .select(wb_MemtoReg),
-//     .alu_result(wb_alu_result),
-//     .mem_data(wb_mem_data),
-//     .wb_data(wb_data)
-// );
-
 //
-// =========================
-// OoO modules
-// =========================
+// CDB buffer
 //
 CDB_buffer u_cdb_buffer (
     .clk(clk),
     .rst(rst),
 
-    .ALU0_result(alu0_result),
-    .ALU0_tag(issue_dest_tag0),
-    .ALU0_valid(issue_valid0),
+    .ALU0_result(alu0_wb_value),
+    .ALU0_tag(alu0_wb_tag),
+    .ALU0_valid(alu0_done),
 
     .ALU1_result(alu1_cdb_result),
     .ALU1_tag(issue_dest_tag1),
@@ -494,6 +360,9 @@ CDB_buffer u_cdb_buffer (
     .cdb_valid(buffered_cdb_valid)
 );
 
+//
+// RAT
+//
 RAT u_rat (
     .clk(clk),
     .rst(rst),
@@ -511,6 +380,9 @@ RAT u_rat (
     .rs2_tag(rs2_tag)
 );
 
+//
+// ROB
+//
 ROB u_rob (
     .clk(clk),
     .rst(rst),
@@ -556,10 +428,13 @@ ROB u_rob (
     .commit_store_data(commit_store_data)
 );
 
+//
+// Issue queue
+//
 issue_queue u_issue_queue (
     .clk(clk),
     .rst(rst),
-    // dispatch side
+
     .dispatch_valid(dispatch_valid_iq),
     .dispatch_op(dispatch_op),
     .dispatch_src1_ready(dispatch_src1_ready),
@@ -589,7 +464,6 @@ issue_queue u_issue_queue (
 
     .iq_full(iq_full),
 
-    // issue slot 0
     .issue_valid0(issue_valid0),
     .issue_alu_op0(issue_alu_op0),
     .issue_src10(issue_src10),
@@ -607,7 +481,6 @@ issue_queue u_issue_queue (
     .issue_jump_reg0(issue_jump_reg0),
     .issue_dest_tag0(issue_dest_tag0),
 
-    // issue slot 1
     .issue_valid1(issue_valid1),
     .issue_alu_op1(issue_alu_op1),
     .issue_src11(issue_src11),
@@ -623,16 +496,29 @@ issue_queue u_issue_queue (
     .issue_branch1(issue_branch1),
     .issue_jump1(issue_jump1),
     .issue_jump_reg1(issue_jump_reg1),
-    .issue_dest_tag1(issue_dest_tag1)
-); 
+    .issue_dest_tag1(issue_dest_tag1),
 
+    .alu0_busy(alu0_busy),
+    .alu0_done(alu0_done)
+);
+
+//
+// ALUs
+//
 ALU0 u_alu0 (
+    .clk(clk),
+    .rst(rst),
+    .start(issue_valid0),
     .A(issue_src10),
     .B(issue_use_imm0 ? issue_imm0 : issue_src20),
     .ctrl(issue_alu_op0),
-    .result(alu0_result),
+    .in_tag(issue_dest_tag0),
+    .wb_value(alu0_wb_value),
+    .wb_tag(alu0_wb_tag),
     .zero(alu0_zero),
-    .negative(alu0_negative)
+    .negative(alu0_negative),
+    .busy(alu0_busy),
+    .done(alu0_done)
 );
 
 ALU1 u_alu1 (
@@ -644,9 +530,10 @@ ALU1 u_alu1 (
     .negative(alu1_negative)
 );
 
-
+//
+// Dispatch operand 1 lookup
+//
 always @(*) begin
-    // defaults
     dispatch_src1_ready = 1'b0;
     dispatch_src1_tag   = rs1_tag;
     dispatch_src1_value = 32'b0;
@@ -661,8 +548,7 @@ always @(*) begin
             if (rob_lookup_valid1 && rob_lookup_ready1) begin
                 dispatch_src1_ready = 1'b1;
                 dispatch_src1_value = rob_lookup_value1;
-            end
-            else begin
+            end else begin
                 dispatch_src1_ready = 1'b0;
                 dispatch_src1_tag   = rs1_tag;
             end
@@ -676,8 +562,10 @@ always @(*) begin
     endcase
 end
 
+//
+// Dispatch operand 2 lookup
+//
 always @(*) begin
-    // defaults
     dispatch_src2_ready = 1'b0;
     dispatch_src2_tag   = rs2_tag;
     dispatch_src2_value = 32'b0;
@@ -692,8 +580,7 @@ always @(*) begin
             if (rob_lookup_valid2 && rob_lookup_ready2) begin
                 dispatch_src2_ready = 1'b1;
                 dispatch_src2_value = rob_lookup_value2;
-            end
-            else begin
+            end else begin
                 dispatch_src2_ready = 1'b0;
                 dispatch_src2_tag   = rs2_tag;
             end
@@ -706,6 +593,5 @@ always @(*) begin
         end
     endcase
 end
-
 
 endmodule
