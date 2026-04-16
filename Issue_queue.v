@@ -17,8 +17,8 @@ module issue_queue (
     input  wire cdb_valid0,
     input  wire [2:0]  cdb_tag0,
     input  wire [31:0] cdb_value0,
-
-    
+    input wire alu0_busy,
+    input wire alu0_done,
     input wire dispatch_use_imm,
     input wire dispatch_reg_write,
     input wire dispatch_mem_read,
@@ -103,29 +103,34 @@ assign iq_full = (IQ[0][150] && IQ[1][150] && IQ[2][150] && IQ[3][150] &&
 
 reg [2:0] issue_idx0;
 reg [2:0] issue_idx1;
-
+reg [2:0] alu0_exec_idx;
 
 always @(*) begin
     issue_valid0 = 1'b0;
     issue_valid1 = 1'b0;
     issue_idx0 = 3'b0;
     issue_idx1 = 3'b0;
+
     issue_src30 = 32'b0;
     issue_src31 = 32'b0;
     issue_pc_plus40 = 32'b0;
     issue_pc_plus41 = 32'b0;
+
     issue_src10 = 32'b0;
     issue_src20 = 32'b0;
     issue_src11 = 32'b0;
     issue_src21 = 32'b0;
+
     issue_imm0 = 32'b0;
     issue_imm1 = 32'b0;
     issue_pc0 = 32'b0;
     issue_pc1 = 32'b0;
+
     issue_alu_op0 = 4'b0;
     issue_alu_op1 = 4'b0;
     issue_dest_tag0 = 3'b0;
     issue_dest_tag1 = 3'b0;
+
     issue_use_imm0 = 1'b0;
     issue_use_imm1 = 1'b0;
     issue_reg_write0 = 1'b0;
@@ -140,50 +145,61 @@ always @(*) begin
     issue_jump1 = 1'b0;
     issue_jump_reg0 = 1'b0;
     issue_jump_reg1 = 1'b0;
-    issue_pc_plus40 = 32'b0;
-    issue_pc_plus41 = 32'b0;
-    
 
+    // -------------------------
+    // ALU0 : MUL only
+    // -------------------------
     for (j = 0; j < 8; j = j + 1) begin
-        if (IQ[j][150] && IQ[j][35] && IQ[j][71]) begin
-            // first ready entry goes to ALU0
-            if (!issue_valid0) begin
-                issue_valid0 = 1'b1;
-                issue_idx0   = j[2:0];
-                issue_src10  = IQ[j][31:0];
-                issue_src20  = IQ[j][67:36];
-                issue_imm0   = IQ[j][103:72];
-                issue_pc0    = IQ[j][135:104];
-                issue_alu_op0 = IQ[j][139:136];
-                issue_dest_tag0  = IQ[j][142:140];
-                issue_jump_reg0  = IQ[j][143];
-                issue_jump0      = IQ[j][144];
-                issue_branch0    = IQ[j][145];
-                issue_mem_write0 = IQ[j][146];
-                issue_mem_read0  = IQ[j][147];
-                issue_reg_write0 = IQ[j][148];
-                issue_use_imm0   = IQ[j][149];
-            end
+        if (!issue_valid0 &&
+            !alu0_busy &&    
+            IQ[j][150] &&
+            IQ[j][35] &&
+            IQ[j][71] &&
+            (IQ[j][139:136] == 4'b1011)) begin
 
-            // second ready entry goes to ALU1
-            else if (!issue_valid1) begin
-                issue_valid1 = 1'b1;
-                issue_idx1   = j[2:0];
+            issue_valid0      = 1'b1;
+            issue_idx0        = j[2:0];
+            issue_src10       = IQ[j][31:0];
+            issue_src20       = IQ[j][67:36];
+            issue_imm0        = IQ[j][103:72];
+            issue_pc0         = IQ[j][135:104];
+            issue_alu_op0     = IQ[j][139:136];
+            issue_dest_tag0   = IQ[j][142:140];
+            issue_jump_reg0   = IQ[j][143];
+            issue_jump0       = IQ[j][144];
+            issue_branch0     = IQ[j][145];
+            issue_mem_write0  = IQ[j][146];
+            issue_mem_read0   = IQ[j][147];
+            issue_reg_write0  = IQ[j][148];
+            issue_use_imm0    = IQ[j][149];
+        end
+    end
 
-                issue_src11  = IQ[j][31:0];
-                issue_src21  = IQ[j][67:36];
-                issue_imm1   = IQ[j][103:72];
-                issue_pc1    = IQ[j][135:104];
-                issue_alu_op1 = IQ[j][139:136];
-                issue_dest_tag1  = IQ[j][142:140];
-                issue_jump_reg1  = IQ[j][143];
-                issue_jump1      = IQ[j][144];
-                issue_branch1    = IQ[j][145];
-                issue_mem_write1 = IQ[j][146];
-                issue_mem_read1  = IQ[j][147];
-                issue_reg_write1 = IQ[j][148];
-                issue_use_imm1   = IQ[j][149];
-            end
+    // -------------------------
+    // ALU1 : everything except MUL
+    // -------------------------
+    for (j = 0; j < 8; j = j + 1) begin
+        if (!issue_valid1 &&
+            IQ[j][150] &&
+            IQ[j][35] &&
+            IQ[j][71] &&
+            (IQ[j][139:136] != 4'b1011)) begin
+
+            issue_valid1      = 1'b1;
+            issue_idx1        = j[2:0];
+            issue_src11       = IQ[j][31:0];
+            issue_src21       = IQ[j][67:36];
+            issue_imm1        = IQ[j][103:72];
+            issue_pc1         = IQ[j][135:104];
+            issue_alu_op1     = IQ[j][139:136];
+            issue_dest_tag1   = IQ[j][142:140];
+            issue_jump_reg1   = IQ[j][143];
+            issue_jump1       = IQ[j][144];
+            issue_branch1     = IQ[j][145];
+            issue_mem_write1  = IQ[j][146];
+            issue_mem_read1   = IQ[j][147];
+            issue_reg_write1  = IQ[j][148];
+            issue_use_imm1    = IQ[j][149];
         end
     end
 end
@@ -284,8 +300,13 @@ end
         // NOTE:
         // - IQ state is only modified in clocked block
         // - Ensures no combinational write to storage (important for synthesis)
+        
+
         if (issue_valid0)
-            IQ[issue_idx0] <= 151'b0;
+            alu0_exec_idx <= issue_idx0;
+
+        if (alu0_done)
+            IQ[alu0_exec_idx] <= 151'b0;
 
         if (issue_valid1)
             IQ[issue_idx1] <= 151'b0;
