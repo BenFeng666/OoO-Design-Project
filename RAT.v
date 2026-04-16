@@ -12,6 +12,7 @@ module RAT (
     output reg        rs1_renamed,
     output reg [2:0]  rs1_tag,
     output reg        rs2_renamed,
+    input wire flush,
     output reg [2:0]  rs2_tag
 );
 reg [3:0] RAT [31:0]; // assume RAT have 32 entry and we have 32 register
@@ -22,6 +23,10 @@ always @(posedge clk or negedge rst) begin
         for (i=0; i<32;i++) begin 
             RAT[i] <= 4'b0; end
     end
+    //else if (flush) begin
+        //for (i = 0; i < 32; i = i + 1)
+            //RAT[i] <= 4'b0;
+    //end
     else begin // for distination register 
         if (rename_valid && rd != 5'd0) begin 
             RAT[rd] <={1'b1, rob_idx};
