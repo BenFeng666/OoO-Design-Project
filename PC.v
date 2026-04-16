@@ -1,19 +1,16 @@
 module PC (
     input wire clk,
     input wire rst,
+    input wire stall,
     input wire [31:0] next_inst,
-    output reg [31:0] pc 
+    output reg [31:0] pc
 );
 
-always  @(posedge clk , negedge rst)
-begin
+always @(posedge clk or negedge rst) begin
     if (!rst)
-    begin 
-        pc<=32'b0;
-    end
-    else begin
-    pc <= next_inst;
-    end
-
+        pc <= 32'b0;
+    else if (!stall)
+        pc <= next_inst;
 end
+
 endmodule
