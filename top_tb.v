@@ -66,12 +66,27 @@ begin
     $display("ID: inst=%h rs1_data=%0d rs2_data=%0d",
              uut.id_instruction, uut.rs1_data, uut.rs2_data);
 
-    $display("IQ: dispatch_valid=%b issue_valid=%b issue_op=%h issue_src1=%0d issue_src2=%0d issue_dest=%0d",
-             uut.dispatch_valid_iq, uut.issue_valid, uut.issue_op,
-             uut.issue_src1, uut.issue_src2, uut.issue_dest_tag);
+    $display("DISPATCH: valid=%b op=%h dest_tag=%0d src1_ready=%b src1_tag=%0d src1_val=%0d src2_ready=%b src2_tag=%0d src2_val=%0d",
+             uut.dispatch_valid_iq, uut.dispatch_op, uut.dispatch_dest_tag,
+             uut.dispatch_src1_ready, uut.dispatch_src1_tag, uut.dispatch_src1_value,
+             uut.dispatch_src2_ready, uut.dispatch_src2_tag, uut.dispatch_src2_value);
+
+    $display("ISSUE0: valid=%b op=%h src1=%0d src2=%0d imm=%0d dest=%0d",
+             uut.issue_valid0, uut.issue_alu_op0, uut.issue_src10, uut.issue_src20,
+             uut.issue_imm0, uut.issue_dest_tag0);
+
+    $display("ISSUE1: valid=%b op=%h src1=%0d src2=%0d imm=%0d dest=%0d",
+             uut.issue_valid1, uut.issue_alu_op1, uut.issue_src11, uut.issue_src21,
+             uut.issue_imm1, uut.issue_dest_tag1);
+
+    $display("ALU0: result=%0d zero=%b neg=%b",
+             uut.alu0_result, uut.alu0_zero, uut.alu0_negative);
+
+    $display("ALU1: result=%0d zero=%b neg=%b",
+             uut.alu1_result, uut.alu1_zero, uut.alu1_negative);
 
     $display("CDB: valid=%b tag=%0d value=%0d",
-             uut.cdb_valid, uut.cdb_tag, uut.cdb_value);
+             uut.cdb_valid0, uut.cdb_tag0, uut.cdb_value0);
 
     $display("ROB: dispatch_idx=%0d commit_valid=%b commit_addr=x%0d commit_data=%0d",
              uut.dispatch_rob_idx, uut.commit_valid, uut.commit_addr, uut.commit_data);
@@ -316,7 +331,7 @@ initial begin
         $display("TEST 6 FAIL");
     end
 
-        // ============================================================
+    // ============================================================
     // TEST 7: OLDER SLOW OP, YOUNGER FAST OP
     // x1=7 x2=3 x6=2 x7=5
     //
@@ -359,7 +374,7 @@ initial begin
         $display("TEST 7 FAIL");
     end
 
-        // ============================================================
+    // ============================================================
     // TEST 8: THREE-INSTRUCTION RAW CHAIN + ONE INDEPENDENT YOUNGER
     // x1=7 x2=3 x7=5
     //
@@ -407,11 +422,69 @@ initial begin
         $display("TEST 8 FAIL");
     end
 
+        // ============================================================
+    // TEST 9: TRUE OVERTAKE CHECK
+    // Goal:
+    //   inst0 produces x3
+    //   inst1 waits on x4 (not ready yet)
+    //   inst2 is independent and should execute before inst1
+    //   inst3 later produces x4 so inst1 can finally run
+    //
+    // Program:
+    //   0: add x3, x1, x2      -> 10
+    //   1: add x5, x4, x2      -> waits for x4
+    //   2: add x6, x7, x2      -> 8   (independent younger)
+    //   3: add x4, x1, x1      -> 14  (finally makes x4 ready)
+    //
+    // Expected final:
+    //   x3 = 10
+    //   x4 = 14
+    //   x5 = 17
+    //   x6 = 8
+    //
+    // What to look for in the log:
+    //   x6 instruction should ISSUE/EXECUTE before x5 instruction
+    //   but commit should still be x3 -> x5 -> x6 -> x4 only if your ROB
+    //   preserves original dispatch order, or according to your actual
+    //   instruction order:
+    //     inst0(x3), inst1(x5), inst2(x6), inst3(x4)
+    //   So even if x6 finishes early, it must not commit before x5.
+    // ============================================================
+    $display("\n==================================================");
+    $display("TEST 9: TRUE OVERTAKE CHECK");
+    $display("==================================================");
+
+    clear_imem;
+    reset_core;
+    clear_regfile;
+    preload_basic_regs;
+
+    uut.u_imem.inst_mem[0] = 32'h002081b3; // add x3, x1, x2   -> 10
+    uut.u_imem.inst_mem[1] = 32'h002202b3; // add x5, x4, x2   -> waits for x4
+    uut.u_imem.inst_mem[2] = 32'h00238333; // add x6, x7, x2   -> 8
+    uut.u_imem.inst_mem[3] = 32'h00108233; // add x4, x1, x1   -> 14
+    uut.u_imem.inst_mem[4] = 32'h00000013;
+    uut.u_imem.inst_mem[5] = 32'h00000013;
+    uut.u_imem.inst_mem[6] = 32'h00000013;
+    uut.u_imem.inst_mem[7] = 32'h00000013;
+    uut.u_imem.inst_mem[8] = 32'h00000013;
+    uut.u_imem.inst_mem[9] = 32'h00000013;
+
+    run_cycles(36);
+
+    if (uut.u_reg_file.store_unit[3] == 32'd10 &&
+        uut.u_reg_file.store_unit[4] == 32'd14 &&
+        uut.u_reg_file.store_unit[5] == 32'd17 &&
+        uut.u_reg_file.store_unit[6] == 32'd8) begin
+        $display("TEST 9 PASS");
+        pass_count = pass_count + 1;
+    end else begin
+        $display("TEST 9 FAIL");
+    end
+
     $display("\n==================================================");
     $display("TOTAL PASSED = %0d / 8", pass_count);
     $display("==================================================");
-
-    
 
     $finish;
 end
