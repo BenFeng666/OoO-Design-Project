@@ -4,224 +4,221 @@ module top_tb;
 
 reg clk;
 reg rst;
+integer i;
 
-integer stdin_handle;
-integer scan_ok;
-integer user_move;
-integer player_id;
-integer move_count;
+integer cycle_count;
+integer commit_count;
+integer stable_count;
+real cpi;
 
 top uut (
     .clk(clk),
     .rst(rst)
 );
 
-// Clock
-initial begin
-    clk = 0;
-    forever #5 clk = ~clk;
-end
+always #5 clk = ~clk;
 
-function [7:0] mark;
-    input [31:0] value;
-    begin
-        if (value == 32'd1)
-            mark = "X";
-        else if (value == 32'd2)
-            mark = "O";
-        else
-            mark = "_";
-    end
-endfunction
+// Final board:
+// X | X | X
+// _ | O | _
+// _ | _ | O
+wire final_state_ok;
+
+assign final_state_ok =
+    uut.u_reg_file.store_unit[10] == 32'd1 && // cell 0 = X
+    uut.u_reg_file.store_unit[11] == 32'd1 && // cell 1 = X
+    uut.u_reg_file.store_unit[12] == 32'd1 && // cell 2 = X
+    uut.u_reg_file.store_unit[13] == 32'd0 && // cell 3 = empty
+    uut.u_reg_file.store_unit[14] == 32'd2 && // cell 4 = O
+    uut.u_reg_file.store_unit[15] == 32'd0 && // cell 5 = empty
+    uut.u_reg_file.store_unit[16] == 32'd0 && // cell 6 = empty
+    uut.u_reg_file.store_unit[17] == 32'd0 && // cell 7 = empty
+    uut.u_reg_file.store_unit[18] == 32'd2 && // cell 8 = O
+    uut.u_reg_file.store_unit[19] == 32'd1 && // winner = X
+    commit_count >= 6;
+
+task clear_imem;
+begin
+    for (i = 0; i < 256; i = i + 1)
+        uut.u_imem.inst_mem[i] = 32'h00000013; // nop
+end
+endtask
+
+task reset_core;
+begin
+    rst = 1'b1;
+    #1;
+    rst = 1'b0;
+    #1;
+    rst = 1'b1;
+    #1;
+end
+endtask
+
+task clear_regfile;
+begin
+    for (i = 0; i < 32; i = i + 1)
+        uut.u_reg_file.store_unit[i] = 32'd0;
+end
+endtask
+
+task load_program;
+begin
+    clear_imem;
+
+    // ------------------------------------------------------------
+    // Tic Tac Toe scripted moves using RISC-V binary instructions
+    //
+    // addi x10, x0, 1   // X moves to cell 0
+    // addi x14, x0, 2   // O moves to cell 4
+    // addi x11, x0, 1   // X moves to cell 1
+    // addi x18, x0, 2   // O moves to cell 8
+    // addi x12, x0, 1   // X moves to cell 2
+    // addi x19, x0, 1   // winner = X
+    // ------------------------------------------------------------
+
+    uut.u_imem.inst_mem[0] = 32'h00100513; // addi x10, x0, 1
+    uut.u_imem.inst_mem[1] = 32'h00200713; // addi x14, x0, 2
+    uut.u_imem.inst_mem[2] = 32'h00100593; // addi x11, x0, 1
+    uut.u_imem.inst_mem[3] = 32'h00200913; // addi x18, x0, 2
+    uut.u_imem.inst_mem[4] = 32'h00100613; // addi x12, x0, 1
+    uut.u_imem.inst_mem[5] = 32'h00100993; // addi x19, x0, 1
+
+    for (i = 6; i < 80; i = i + 1)
+        uut.u_imem.inst_mem[i] = 32'h00000013;
+end
+endtask
+
+task print_cell;
+input [31:0] v;
+begin
+    if (v == 32'd1)
+        $write(" X ");
+    else if (v == 32'd2)
+        $write(" O ");
+    else
+        $write(" _ ");
+end
+endtask
 
 task print_board;
-    begin
-        $display("\nCurrent board:");
-        $display(" %s | %s | %s ",
-            mark(uut.u_data_mem.data_mem[0]),
-            mark(uut.u_data_mem.data_mem[1]),
-            mark(uut.u_data_mem.data_mem[2])
-        );
-        $display("---+---+---");
-        $display(" %s | %s | %s ",
-            mark(uut.u_data_mem.data_mem[3]),
-            mark(uut.u_data_mem.data_mem[4]),
-            mark(uut.u_data_mem.data_mem[5])
-        );
-        $display("---+---+---");
-        $display(" %s | %s | %s ",
-            mark(uut.u_data_mem.data_mem[6]),
-            mark(uut.u_data_mem.data_mem[7]),
-            mark(uut.u_data_mem.data_mem[8])
-        );
-        $display("----------------------");
-    end
+begin
+    $display("");
+    print_cell(uut.u_reg_file.store_unit[10]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[11]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[12]);
+    $display("");
+    $display("---+---+---");
+    print_cell(uut.u_reg_file.store_unit[13]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[14]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[15]);
+    $display("");
+    $display("---+---+---");
+    print_cell(uut.u_reg_file.store_unit[16]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[17]);
+    $write("|");
+    print_cell(uut.u_reg_file.store_unit[18]);
+    $display("");
+end
 endtask
 
-function integer is_occupied;
-    input integer pos;
-    begin
-        if (uut.u_data_mem.data_mem[pos] != 32'd0)
-            is_occupied = 1;
-        else
-            is_occupied = 0;
-    end
-endfunction
+task show_state;
+begin
+    $display("cycle=%0d PC=%0d inst=%h commit=%b commit_count=%0d winner=%0d",
+        cycle_count,
+        uut.pc,
+        uut.instruction,
+        uut.commit_valid,
+        commit_count,
+        uut.u_reg_file.store_unit[19]);
 
-function integer check_win;
-    input [31:0] p;
-    begin
-        check_win = 0;
+    print_board;
+end
+endtask
 
-        // Top row: 0, 1, 2
-        if (uut.u_data_mem.data_mem[0] == p &&
-            uut.u_data_mem.data_mem[1] == p &&
-            uut.u_data_mem.data_mem[2] == p)
-            check_win = 1;
+task run_until_done;
+begin : RUN_LOOP
+    stable_count = 0;
 
-        // Middle row: 3, 4, 5
-        if (uut.u_data_mem.data_mem[3] == p &&
-            uut.u_data_mem.data_mem[4] == p &&
-            uut.u_data_mem.data_mem[5] == p)
-            check_win = 1;
-
-        // Bottom row: 6, 7, 8
-        if (uut.u_data_mem.data_mem[6] == p &&
-            uut.u_data_mem.data_mem[7] == p &&
-            uut.u_data_mem.data_mem[8] == p)
-            check_win = 1;
-
-        // Left column: 0, 3, 6
-        if (uut.u_data_mem.data_mem[0] == p &&
-            uut.u_data_mem.data_mem[3] == p &&
-            uut.u_data_mem.data_mem[6] == p)
-            check_win = 1;
-
-        // Middle column: 1, 4, 7
-        if (uut.u_data_mem.data_mem[1] == p &&
-            uut.u_data_mem.data_mem[4] == p &&
-            uut.u_data_mem.data_mem[7] == p)
-            check_win = 1;
-
-        // Right column: 2, 5, 8
-        if (uut.u_data_mem.data_mem[2] == p &&
-            uut.u_data_mem.data_mem[5] == p &&
-            uut.u_data_mem.data_mem[8] == p)
-            check_win = 1;
-
-        // Diagonal: 0, 4, 8
-        if (uut.u_data_mem.data_mem[0] == p &&
-            uut.u_data_mem.data_mem[4] == p &&
-            uut.u_data_mem.data_mem[8] == p)
-            check_win = 1;
-
-        // Diagonal: 2, 4, 6
-        if (uut.u_data_mem.data_mem[2] == p &&
-            uut.u_data_mem.data_mem[4] == p &&
-            uut.u_data_mem.data_mem[6] == p)
-            check_win = 1;
-    end
-endfunction
-
-task make_move;
-    input integer move_pos;
-    input integer player_num;
-    begin
-        $display("\nHuman chooses cell %0d, player = %0d", move_pos, player_num);
-
-        // Testbench acts like a memory-mapped input device.
-        // It directly writes the selected move into board memory.
-        @(negedge clk);
-        uut.u_data_mem.data_mem[move_pos] = player_num;
-
+    while (cycle_count < 100) begin
         @(posedge clk);
-        print_board();
+        #1;
+
+        cycle_count = cycle_count + 1;
+
+        if (uut.commit_valid)
+            commit_count = commit_count + 1;
+
+        show_state;
+
+        if (final_state_ok)
+            stable_count = stable_count + 1;
+        else
+            stable_count = 0;
+
+        if (stable_count >= 3) begin
+            $display("Final board stable. Stopping at cycle %0d.", cycle_count);
+            disable RUN_LOOP;
+        end
     end
+end
 endtask
 
 initial begin
-    stdin_handle = 32'h80000000; // stdin for vvp
+    clk = 1'b0;
+    rst = 1'b1;
 
-    // Reset once
-    rst = 0;
-    #30;
-    rst = 1;
-    #30;
+    cycle_count = 0;
+    commit_count = 0;
+    stable_count = 0;
+    cpi = 0.0;
 
-    // Clear board
-    uut.u_data_mem.data_mem[0] = 0;
-    uut.u_data_mem.data_mem[1] = 0;
-    uut.u_data_mem.data_mem[2] = 0;
-    uut.u_data_mem.data_mem[3] = 0;
-    uut.u_data_mem.data_mem[4] = 0;
-    uut.u_data_mem.data_mem[5] = 0;
-    uut.u_data_mem.data_mem[6] = 0;
-    uut.u_data_mem.data_mem[7] = 0;
-    uut.u_data_mem.data_mem[8] = 0;
+    $dumpfile("ooo_tictactoe_binary_tb.vcd");
+    $dumpvars(0, top_tb);
 
-    player_id = 1;
-    move_count = 0;
+    $display("\n==================================================");
+    $display("OoO TIC TAC TOE BINARY-CODE DEMO");
+    $display("X and O moves are real instructions");
+    $display("==================================================");
 
-    $display("\nTic Tac Toe Keyboard Demo");
-    $display("Type a move from 0 to 8, then press Enter.");
-    $display("Board positions:");
-    $display(" 0 | 1 | 2 ");
-    $display("---+---+---");
-    $display(" 3 | 4 | 5 ");
-    $display("---+---+---");
-    $display(" 6 | 7 | 8 ");
-    $display("Type 9 to quit.");
+    load_program;
 
-    print_board();
+    reset_core;
+    #2;
 
-    while (1) begin
-        if (player_id == 1)
-            $write("\nPlayer X, enter move: ");
-        else
-            $write("\nPlayer O, enter move: ");
+    clear_regfile;
 
-        scan_ok = $fscanf(stdin_handle, "%d", user_move);
+    run_until_done;
 
-        if (scan_ok != 1) begin
-            $display("Input error. Ending simulation.");
-            $finish;
-        end
+    if (commit_count > 0)
+        cpi = cycle_count * 1.0 / commit_count;
+    else
+        cpi = 0.0;
 
-        if (user_move == 9) begin
-            $display("Quit.");
-            $finish;
-        end
+    $display("\nFINAL TIC TAC TOE BOARD:");
+    print_board;
 
-        if (user_move < 0 || user_move > 8) begin
-            $display("Invalid move. Use 0 to 8.");
-        end
-        else if (is_occupied(user_move)) begin
-            $display("Cell %0d is already occupied. Try again.", user_move);
-        end
-        else begin
-            make_move(user_move, player_id);
-            move_count = move_count + 1;
+    $display("\nWinner register x19 = %0d", uut.u_reg_file.store_unit[19]);
+    $display("1 means X wins, 2 means O wins");
 
-            if (check_win(player_id)) begin
-                if (player_id == 1)
-                    $display("\nX wins!");
-                else
-                    $display("\nO wins!");
+    $display("\n==================================================");
+    $display("OoO TIC TAC TOE CPI RESULT");
+    $display("Total cycles           = %0d", cycle_count);
+    $display("Committed instructions = %0d", commit_count);
+    $display("CPI = cycles / commits = %0.3f", cpi);
+    $display("==================================================");
 
-                $finish;
-            end
+    if (final_state_ok)
+        $display("TIC TAC TOE DEMO PASS: X wins top row");
+    else
+        $display("TIC TAC TOE DEMO FAIL");
 
-            if (move_count == 9) begin
-                $display("\nDraw!");
-                $finish;
-            end
-
-            if (player_id == 1)
-                player_id = 2;
-            else
-                player_id = 1;
-        end
-    end
+    $finish;
 end
 
 endmodule
